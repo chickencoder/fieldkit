@@ -1,11 +1,19 @@
 import { Sandbox } from "@vercel/sandbox";
 import { WorkerBundler } from "./worker-bundle";
+import type {
+  CommandResult,
+  WorkerOptions,
+  WorkerStatus,
+  WorkerLogsResult,
+  DebugResult,
+  ServiceResult,
+} from "./types";
 
 export async function runCommandInSandbox(
   sandbox: Sandbox,
   command: string,
   args: string[] = [],
-) {
+): Promise<CommandResult> {
   try {
     const result = await sandbox.runCommand(command, args);
 
@@ -19,14 +27,14 @@ export async function runCommandInSandbox(
 
     try {
       stdout = await (result.stdout as () => Promise<string>)();
-    } catch {
-      // Failed to read stdout
+    } catch (error) {
+      console.warn("Failed to read stdout:", error);
     }
 
     try {
       stderr = await (result.stderr as () => Promise<string>)();
-    } catch {
-      // Failed to read stderr
+    } catch (error) {
+      console.warn("Failed to read stderr:", error);
     }
 
     const fullCommand =
@@ -54,31 +62,22 @@ export async function runCommandInSandbox(
 
 export async function injectWorkerIntoSandbox(
   sandbox: Sandbox,
-  options: {
-    sandboxId: string;
-    convexUrl: string;
-    r2Config?: {
-      endpoint: string;
-      accessKeyId: string;
-      secretAccessKey: string;
-      bucketName: string;
-    };
-  },
-): Promise<{ success: boolean; error?: string }> {
+  options: WorkerOptions,
+): Promise<ServiceResult> {
   try {
-    console.log("📦 Building and injecting worker bundle into sandbox...");
+    console.log("Building and injecting worker bundle into sandbox...");
 
     // Build the worker bundle
     const bundle = await WorkerBundler.buildBundle();
 
     // Write the bundle to the sandbox
     console.log(
-      `📤 Uploading worker bundle (${(bundle.size / 1024).toFixed(1)}KB) to sandbox...`,
+      `Uploading worker bundle (${(bundle.size / 1024).toFixed(1)}KB) to sandbox...`,
     );
 
     await sandbox.writeFiles([{
       path: "/tmp/sandbox-worker.js",
-      content: Buffer.from(bundle.content)
+      content: Buffer.from(bundle.content),
     }]);
 
     // Make the file executable
@@ -91,7 +90,7 @@ export async function injectWorkerIntoSandbox(
     }
 
     // Install @anthropic-ai/claude-code globally
-    console.log("📦 Installing @anthropic-ai/claude-code globally...");
+    console.log("Installing @anthropic-ai/claude-code globally...");
     const installResult = await runCommandInSandbox(sandbox, "npm", [
       "install",
       "-g",
@@ -100,13 +99,13 @@ export async function injectWorkerIntoSandbox(
     if (!installResult.success) {
       throw new Error(`Failed to install @anthropic-ai/claude-code: ${installResult.error}`);
     }
-    console.log("✅ @anthropic-ai/claude-code installed successfully");
+    console.log("@anthropic-ai/claude-code installed successfully");
 
     // Generate environment variables and start command
     const envVars = WorkerBundler.generateWorkerEnv(options);
     const startCommand = WorkerBundler.generateStartCommand(envVars);
 
-    console.log("🚀 Starting worker in background...");
+    console.log("Starting worker in background...");
 
     // Start the worker (fire and forget - don't await the process)
     const startResult = await runCommandInSandbox(sandbox, "bash", [
@@ -118,14 +117,14 @@ export async function injectWorkerIntoSandbox(
       throw new Error(`Failed to start worker: ${startResult.error}`);
     }
 
-    console.log("✅ Worker start command executed successfully");
-    console.log("📝 Worker will initialize in background - use getWorkerStatus() to check status");
+    console.log("Worker start command executed successfully");
+    console.log("Worker will initialize in background - use getWorkerStatus() to check status");
 
     return { success: true };
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error occurred";
-    console.error("❌ Failed to inject worker into sandbox:", errorMessage);
+    console.error("Failed to inject worker into sandbox:", errorMessage);
     return {
       success: false,
       error: errorMessage,
@@ -133,10 +132,7 @@ export async function injectWorkerIntoSandbox(
   }
 }
 
-export async function getWorkerStatus(sandbox: Sandbox): Promise<{
-  isRunning: boolean;
-  pid?: string;
-}> {
+export async function getWorkerStatus(sandbox: Sandbox): Promise<WorkerStatus> {
   try {
     // Check if worker is running
     const statusCommand = WorkerBundler.generateStatusCommand();
@@ -164,18 +160,14 @@ export async function getWorkerStatus(sandbox: Sandbox): Promise<{
       pid,
     };
   } catch (error) {
-    console.error("❌ Failed to get worker status:", error);
+    console.error("Failed to get worker status:", error);
     return {
       isRunning: false,
     };
   }
 }
 
-export async function getWorkerLogs(sandbox: Sandbox): Promise<{
-  success: boolean;
-  logs?: string;
-  error?: string;
-}> {
+export async function getWorkerLogs(sandbox: Sandbox): Promise<WorkerLogsResult> {
   try {
     const logsCommand = WorkerBundler.generateLogsCommand();
     const logsResult = await runCommandInSandbox(sandbox, "bash", [
@@ -190,7 +182,7 @@ export async function getWorkerLogs(sandbox: Sandbox): Promise<{
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-    console.error("❌ Failed to get worker logs:", errorMessage);
+    console.error("Failed to get worker logs:", errorMessage);
     return {
       success: false,
       error: errorMessage,
@@ -198,11 +190,7 @@ export async function getWorkerLogs(sandbox: Sandbox): Promise<{
   }
 }
 
-export async function debugSandboxFiles(sandbox: Sandbox): Promise<{
-  success: boolean;
-  debug?: string;
-  error?: string;
-}> {
+export async function debugSandboxFiles(sandbox: Sandbox): Promise<DebugResult> {
   try {
     // Check what files exist in /tmp
     const debugCommands = [
@@ -234,8 +222,9 @@ export async function debugSandboxFiles(sandbox: Sandbox): Promise<{
 
     const debugResult = await runCommandInSandbox(sandbox, "bash", [
       "-c",
-      debugCommands.join(" && ")
+      debugCommands.join(" && "),
     ]);
+
 
     return {
       success: debugResult.success,
@@ -244,7 +233,7 @@ export async function debugSandboxFiles(sandbox: Sandbox): Promise<{
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-    console.error("❌ Failed to debug sandbox files:", errorMessage);
+    console.error("Failed to debug sandbox files:", errorMessage);
     return {
       success: false,
       error: errorMessage,
@@ -256,9 +245,9 @@ export async function startProxyServer(
   sandbox: Sandbox,
   localPort: number,
   proxyPort: number = 8080,
-): Promise<{ success: boolean; error?: string }> {
+): Promise<ServiceResult> {
   try {
-    console.log(`🔄 Starting proxy server: localhost:${proxyPort} → localhost:${localPort}`);
+    console.log(`Starting proxy server: localhost:${proxyPort} → localhost:${localPort}`);
 
     // Create a simple HTTP proxy script
     const proxyScript = `
@@ -347,11 +336,12 @@ server.listen(${proxyPort}, () => {
     // Write the proxy script to the sandbox
     await sandbox.writeFiles([{
       path: "/tmp/proxy-server.js",
-      content: Buffer.from(proxyScript)
+      content: Buffer.from(proxyScript),
     }]);
 
     // Start the proxy server in the background
-    const startCommand = "nohup node /tmp/proxy-server.js > /tmp/proxy.log 2>&1 & echo $! > /tmp/proxy.pid";
+    const startCommand =
+      "nohup node /tmp/proxy-server.js > /tmp/proxy.log 2>&1 & echo $! > /tmp/proxy.pid";
     const startResult = await runCommandInSandbox(sandbox, "bash", [
       "-c",
       startCommand,
@@ -366,23 +356,27 @@ server.listen(${proxyPort}, () => {
 
     const checkResult = await runCommandInSandbox(sandbox, "bash", [
       "-c",
-      "ps aux | grep proxy-server.js | grep -v grep || echo 'not running'"
+      "ps aux | grep proxy-server.js | grep -v grep || echo 'not running'",
     ]);
 
     // Always check proxy logs for debugging
-    const logResult = await runCommandInSandbox(sandbox, "cat", ["/tmp/proxy.log"]);
+    const logResult = await runCommandInSandbox(sandbox, "cat", [
+      "/tmp/proxy.log",
+    ]);
     console.log("Proxy server logs:", logResult.output);
 
-    if (checkResult.output?.includes('not running')) {
-      throw new Error(`Proxy server failed to start. Logs: ${logResult.output}`);
+    if (checkResult.output?.includes("not running")) {
+      throw new Error(
+        `Proxy server failed to start. Logs: ${logResult.output}`,
+      );
     }
 
-    console.log("✅ Proxy server started successfully");
+    console.log("Proxy server started successfully");
     return { success: true };
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error occurred";
-    console.error("❌ Failed to start proxy server:", errorMessage);
+    console.error("Failed to start proxy server:", errorMessage);
     return {
       success: false,
       error: errorMessage,
@@ -392,9 +386,9 @@ server.listen(${proxyPort}, () => {
 
 export async function stopWorker(
   sandbox: Sandbox,
-): Promise<{ success: boolean; error?: string }> {
+): Promise<ServiceResult> {
   try {
-    console.log("🛑 Stopping worker...");
+    console.log("Stopping worker...");
 
     const stopCommand = WorkerBundler.generateStopCommand();
     const stopResult = await runCommandInSandbox(sandbox, "bash", [
@@ -403,7 +397,7 @@ export async function stopWorker(
     ]);
 
     if (stopResult.success) {
-      console.log("✅ Worker stopped successfully");
+      console.log("Worker stopped successfully");
       return { success: true };
     } else {
       throw new Error(`Failed to stop worker: ${stopResult.error}`);
@@ -411,7 +405,7 @@ export async function stopWorker(
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error occurred";
-    console.error("❌ Failed to stop worker:", errorMessage);
+    console.error("Failed to stop worker:", errorMessage);
     return {
       success: false,
       error: errorMessage,

@@ -1,12 +1,7 @@
 import { execSync } from "child_process";
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
-
-export interface WorkerBundle {
-  content: string;
-  filename: string;
-  size: number;
-}
+import type { WorkerBundle, WorkerEnvironment } from "./types";
 
 export class WorkerBundler {
   private static bundlePath: string | null = null;
@@ -18,11 +13,11 @@ export class WorkerBundler {
   static async buildBundle(): Promise<WorkerBundle> {
     // If we have a cached bundle, return it
     if (this.cachedBundle) {
-      console.log("📦 Using cached worker bundle");
+      console.log("Using cached worker bundle");
       return this.cachedBundle;
     }
 
-    console.log("🔨 Building sandbox worker bundle...");
+    console.log("Building sandbox worker bundle...");
 
     try {
       // Get the path to the sandbox-worker package
@@ -34,7 +29,7 @@ export class WorkerBundler {
 
       // Build the standalone bundle
       const buildCommand = "pnpm build:standalone";
-      console.log(`📦 Running: ${buildCommand} in ${workerPackagePath}`);
+      console.log(`Running: ${buildCommand} in ${workerPackagePath}`);
 
       execSync(buildCommand, {
         cwd: workerPackagePath,
@@ -59,11 +54,11 @@ export class WorkerBundler {
       this.cachedBundle = bundle;
       this.bundlePath = bundlePath;
 
-      console.log(`✅ Worker bundle built successfully (${(bundle.size / 1024).toFixed(1)}KB)`);
+      console.log(`Worker bundle built successfully (${(bundle.size / 1024).toFixed(1)}KB)`);
       return bundle;
 
     } catch (error) {
-      console.error("❌ Failed to build worker bundle:", error);
+      console.error("Failed to build worker bundle:", error);
       throw new Error(`Worker bundle build failed: ${error}`);
     }
   }
@@ -84,7 +79,7 @@ export class WorkerBundler {
   static clearCache(): void {
     this.cachedBundle = null;
     this.bundlePath = null;
-    console.log("🗑️ Worker bundle cache cleared");
+    console.log("Worker bundle cache cleared");
   }
 
   /**
@@ -110,8 +105,8 @@ export class WorkerBundler {
       secretAccessKey: string;
       bucketName: string;
     };
-  }): Record<string, string> {
-    console.log("📋 Generating worker environment variables", {
+  }): WorkerEnvironment {
+    console.log("Generating worker environment variables", {
       sandboxId: options.sandboxId,
       convexUrl: options.convexUrl?.substring(0, 50) + "...",
       hasR2Config: !!options.r2Config,
@@ -119,10 +114,10 @@ export class WorkerBundler {
 
     // Validate required environment variables
     if (!process.env.ANTHROPIC_API_KEY) {
-      console.warn("⚠️ ANTHROPIC_API_KEY not found in environment - Claude Code will not work");
+      console.warn("ANTHROPIC_API_KEY not found in environment - Claude Code will not work");
     }
 
-    const env: Record<string, string> = {
+    const env: WorkerEnvironment = {
       CONVEX_URL: options.convexUrl,
       SANDBOX_ID: options.sandboxId,
       NODE_ENV: "production",
@@ -144,7 +139,7 @@ export class WorkerBundler {
   /**
    * Generate the command to start the worker in a sandbox
    */
-  static generateStartCommand(envVars: Record<string, string>): string {
+  static generateStartCommand(envVars: WorkerEnvironment): string {
     // Convert env vars to export statements
     const envExports = Object.entries(envVars)
       .map(([key, value]) => `export ${key}="${value}"`)
