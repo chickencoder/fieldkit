@@ -117,10 +117,17 @@ export class WorkerBundler {
       hasR2Config: !!options.r2Config,
     });
 
+    // Validate required environment variables
+    if (!process.env.ANTHROPIC_API_KEY) {
+      console.warn("⚠️ ANTHROPIC_API_KEY not found in environment - Claude Code will not work");
+    }
+
     const env: Record<string, string> = {
       CONVEX_URL: options.convexUrl,
       SANDBOX_ID: options.sandboxId,
       NODE_ENV: "production",
+      // Add Claude API key for authentication
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "",
     };
 
     // Add R2 configuration if provided
@@ -144,10 +151,11 @@ export class WorkerBundler {
       .join(" && ");
 
     // Command to start worker in background with logging for debugging
+    // - Set NODE_PATH to include global node_modules
     // - nohup: prevents termination when parent shell exits
     // - & puts process in background
     // - Log to /tmp/worker.log instead of /dev/null for debugging
-    return `${envExports} && (nohup node /tmp/sandbox-worker.js >/tmp/worker.log 2>&1 & echo $! > /tmp/worker.pid && echo "Worker started with PID $(cat /tmp/worker.pid)")`;
+    return `${envExports} && export NODE_PATH=$(npm root -g):$NODE_PATH && (nohup node /tmp/sandbox-worker.js >/tmp/worker.log 2>&1 & echo $! > /tmp/worker.pid && echo "Worker started with PID $(cat /tmp/worker.pid)")`;
   }
 
   /**

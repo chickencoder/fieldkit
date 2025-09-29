@@ -11,5 +11,6 @@ export default defineSchema({
     ),
     parts: v.array(v.any()),
     metadata: v.optional(v.any()),
+    session_id: v.optional(v.string()),
   }),
 });

@@ -24,7 +24,7 @@ const formSchema = z.object({
   branchName: z.string().min(1, "Branch name is required"),
   installCommand: z.string().min(1, "Install command is required"),
   developmentCommand: z.string().min(1, "Development command is required"),
-  port: z
+  localPort: z
     .number()
     .min(1, "Port is required")
     .max(65535, "Port must be between 1 and 65535"),
@@ -44,7 +44,7 @@ export function HomeClient() {
       branchName: "main",
       installCommand: "npm install",
       developmentCommand: "npm run dev",
-      port: 3000,
+      localPort: 3000,
     },
   });
 
@@ -136,7 +136,7 @@ export function HomeClient() {
               />
               <FormField
                 control={form.control}
-                name="port"
+                name="localPort"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Port</FormLabel>

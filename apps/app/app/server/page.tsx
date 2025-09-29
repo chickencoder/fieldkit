@@ -3,9 +3,7 @@ import { preloadQuery, preloadedQueryResult } from "convex/nextjs";
 import { api } from "@repo/convex/_generated/api";
 
 export default async function ServerPage() {
-  const preloaded = await preloadQuery(api.myFunctions.listNumbers, {
-    count: 3,
-  });
+  const preloaded = await preloadQuery(api.messages.getAllMessages, {});
 
   const data = preloadedQueryResult(preloaded);
 

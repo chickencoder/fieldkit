@@ -49,9 +49,9 @@ export class R2Client {
           },
         })
       );
-      console.log(`📤 Uploaded: ${filePath} (${content.length} bytes, hash: ${hash.substring(0, 8)})`);
+      console.log(`Uploaded: ${filePath} (${content.length} bytes, hash: ${hash.substring(0, 8)})`);
     } catch (error) {
-      console.error(`❌ Failed to upload ${filePath}:`, error);
+      console.error(`Failed to upload ${filePath}:`, error);
       throw error;
     }
   }
@@ -73,12 +73,12 @@ export class R2Client {
         return buffer;
       }
       return null;
-    } catch (error: any) {
-      if (error.name === "NoSuchKey") {
-        console.log(`📂 File not found in R2: ${filePath}`);
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === "NoSuchKey") {
+        console.log(`File not found in R2: ${filePath}`);
         return null;
       }
-      console.error(`❌ Failed to download ${filePath}:`, error);
+      console.error(`Failed to download ${filePath}:`, error);
       throw error;
     }
   }
@@ -116,10 +116,10 @@ export class R2Client {
         continuationToken = response.NextContinuationToken;
       } while (continuationToken);
 
-      console.log(`📋 Listed ${files.length} files for sandbox ${sandboxId}`);
+      console.log(`Listed ${files.length} files for sandbox ${sandboxId}`);
       return files;
     } catch (error) {
-      console.error(`❌ Failed to list files for sandbox ${sandboxId}:`, error);
+      console.error(`Failed to list files for sandbox ${sandboxId}:`, error);
       throw error;
     }
   }
@@ -134,9 +134,9 @@ export class R2Client {
           Key: key,
         })
       );
-      console.log(`🗑️ Deleted: ${filePath}`);
+      console.log(`Deleted: ${filePath}`);
     } catch (error) {
-      console.error(`❌ Failed to delete ${filePath}:`, error);
+      console.error(`Failed to delete ${filePath}:`, error);
       throw error;
     }
   }
@@ -152,8 +152,8 @@ export class R2Client {
         })
       );
       return true;
-    } catch (error: any) {
-      if (error.name === "NoSuchKey") {
+    } catch (error: unknown) {
+      if (error instanceof Error && error.name === "NoSuchKey") {
         return false;
       }
       throw error;
@@ -165,13 +165,13 @@ export class R2Client {
   }
 
   async cleanup(sandboxId: string): Promise<void> {
-    console.log(`🧹 Cleaning up files for sandbox ${sandboxId}`);
+    console.log(`Cleaning up files for sandbox ${sandboxId}`);
 
     try {
       const files = await this.listFiles(sandboxId);
 
       if (files.length === 0) {
-        console.log(`✅ No files to clean up for sandbox ${sandboxId}`);
+        console.log(`No files to clean up for sandbox ${sandboxId}`);
         return;
       }
 
@@ -184,9 +184,9 @@ export class R2Client {
         );
       }
 
-      console.log(`✅ Cleaned up ${files.length} files for sandbox ${sandboxId}`);
+      console.log(`Cleaned up ${files.length} files for sandbox ${sandboxId}`);
     } catch (error) {
-      console.error(`❌ Failed to cleanup sandbox ${sandboxId}:`, error);
+      console.error(`Failed to cleanup sandbox ${sandboxId}:`, error);
       throw error;
     }
   }

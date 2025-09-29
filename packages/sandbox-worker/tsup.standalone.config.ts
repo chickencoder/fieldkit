@@ -12,7 +12,7 @@ export default defineConfig({
   platform: "node",
   outDir: "dist/standalone",
   outExtension: () => ({ js: ".js" }),
-  // Bundle all dependencies except Node.js built-ins
+  // Bundle all dependencies except Node.js built-ins and modules that need to remain external
   external: [
     // Node.js built-ins
     "fs",
@@ -38,11 +38,13 @@ export default defineConfig({
     "console",
     "timers",
     "dns",
+    // External modules that need access to their original file structure
+    "@anthropic-ai/claude-code",
   ],
   // Add shebang for executable
   banner: {
     js: "#!/usr/bin/env node\n",
   },
-  // Ensure all dependencies are bundled (remove from external list)
-  noExternal: [/.*/]
+  // Bundle most dependencies but exclude those that need to remain external
+  noExternal: [/^(?!@anthropic-ai\/claude-code).*/]
 });

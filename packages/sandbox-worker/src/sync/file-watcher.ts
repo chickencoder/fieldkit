@@ -84,11 +84,11 @@ export class FileWatcher {
 
   async start(): Promise<void> {
     if (this.isWatching) {
-      console.warn("⚠️ File watcher is already running");
+      console.warn("File watcher is already running");
       return;
     }
 
-    console.log(`🔍 Starting file watcher for: ${this.config.rootDir}`);
+    console.log(`Starting file watcher for: ${this.config.rootDir}`);
 
     try {
       this.watcher = chokidar.watch(this.config.rootDir, {
@@ -109,17 +109,17 @@ export class FileWatcher {
 
       this.watcher.on("error", (err: unknown) => {
         const error = err instanceof Error ? err : new Error(String(err));
-        console.error("❌ File watcher error:", error);
+        console.error("File watcher error:", error);
         this.config.onError(error);
       });
 
       this.watcher.on("ready", () => {
-        console.log("✅ File watcher ready");
+        console.log("File watcher ready");
         this.isWatching = true;
       });
 
     } catch (error) {
-      console.error("❌ Failed to start file watcher:", error);
+      console.error("Failed to start file watcher:", error);
       throw error;
     }
   }
@@ -129,15 +129,15 @@ export class FileWatcher {
       return;
     }
 
-    console.log("🛑 Stopping file watcher");
+    console.log("Stopping file watcher");
 
     try {
       await this.watcher.close();
       this.watcher = null;
       this.isWatching = false;
-      console.log("✅ File watcher stopped");
+      console.log("File watcher stopped");
     } catch (error) {
-      console.error("❌ Error stopping file watcher:", error);
+      console.error("Error stopping file watcher:", error);
       throw error;
     }
   }
@@ -151,7 +151,7 @@ export class FileWatcher {
         return;
       }
 
-      console.log(`📝 File ${eventType}: ${relativePath}`);
+      console.log(`File ${eventType}: ${relativePath}`);
 
       const change: FileChange = {
         path: relativePath,
@@ -175,12 +175,12 @@ export class FileWatcher {
 
         this.config.onFileChange(change);
       } catch (error) {
-        console.error(`❌ Failed to read file ${relativePath}:`, error);
+        console.error(`Failed to read file ${relativePath}:`, error);
         // Still notify about the change, even if we can't read the content
         this.config.onFileChange(change);
       }
     } catch (error) {
-      console.error(`❌ Error handling file event for ${filePath}:`, error);
+      console.error(`Error handling file event for ${filePath}:`, error);
       this.config.onError(error as Error);
     }
   }
@@ -217,7 +217,7 @@ export class FileWatcher {
   }
 
   async scanExistingFiles(): Promise<FileChange[]> {
-    console.log(`🔍 Scanning existing files in: ${this.config.rootDir}`);
+    console.log(`Scanning existing files in: ${this.config.rootDir}`);
 
     try {
       const files = await glob("**/*", {
@@ -252,14 +252,14 @@ export class FileWatcher {
             size: stats.size,
           });
         } catch (error) {
-          console.error(`❌ Failed to read existing file ${filePath}:`, error);
+          console.error(`Failed to read existing file ${filePath}:`, error);
         }
       }
 
-      console.log(`📋 Found ${changes.length} existing files`);
+      console.log(`Found ${changes.length} existing files`);
       return changes;
     } catch (error) {
-      console.error("❌ Failed to scan existing files:", error);
+      console.error("Failed to scan existing files:", error);
       throw error;
     }
   }

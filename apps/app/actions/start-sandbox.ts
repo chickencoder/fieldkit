@@ -4,28 +4,34 @@ import { z } from "zod";
 import { actionClient } from "@/lib/safe-action";
 import { Sandbox } from "@vercel/sandbox";
 import ms from "ms";
-import { runCommandInSandbox, injectWorkerIntoSandbox } from "@/lib/sandbox";
+import { runCommandInSandbox, injectWorkerIntoSandbox, startProxyServer } from "@/lib/sandbox";
 
 const inputSchema = z.object({
   githubRepoUrl: z.string().url(),
   branchName: z.string(),
   installCommand: z.string(),
   developmentCommand: z.string(),
-  port: z.number(),
+  localPort: z.number(),
 });
 
 export const startSandboxAction = actionClient
   .inputSchema(inputSchema)
   .action(async ({ parsedInput }) => {
-    const sandbox = await Sandbox.create({
-      source: {
-        type: "git",
-        url: parsedInput.githubRepoUrl,
-      },
-      resources: { vcpus: 4 },
-      ports: [parsedInput.port],
-      timeout: ms("10m"),
-    });
+    console.log("Received parsed input:", parsedInput);
+    const proxyPort = 3001;
+
+    try {
+      console.log("Creating sandbox...");
+      const sandbox = await Sandbox.create({
+        source: {
+          type: "git",
+          url: parsedInput.githubRepoUrl,
+        },
+        resources: { vcpus: 4 },
+        ports: [proxyPort],
+        timeout: ms("10m"),
+      });
+      console.log("Sandbox created:", sandbox.sandboxId);
 
 
     // Inject and start the sandbox worker
@@ -66,8 +72,19 @@ export const startSandboxAction = actionClient
     console.log("running development command");
     runCommandInSandbox(sandbox, "sh", ["-c", parsedInput.developmentCommand]);
 
+    console.log("starting proxy server");
+    const proxyResult = await startProxyServer(sandbox, parsedInput.localPort, proxyPort);
+
+    if (!proxyResult.success) {
+      console.warn("⚠️ Failed to start proxy server, continuing without it:", proxyResult.error);
+    }
+
     return {
       sandboxId: sandbox.sandboxId,
-      domain: sandbox.domain(parsedInput.port),
+      domain: sandbox.domain(proxyPort),
     };
+    } catch (error) {
+      console.error("Sandbox action failed:", error);
+      throw error;
+    }
   });

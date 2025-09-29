@@ -31,7 +31,7 @@ export class SyncQueue {
 
   async addFile(change: FileChange, priority: "immediate" | "batch" = "batch"): Promise<void> {
     if (this.isStopped) {
-      console.warn(`⚠️ Sync queue is stopped, ignoring file: ${change.path}`);
+      console.warn(`Sync queue is stopped, ignoring file: ${change.path}`);
       return;
     }
 
@@ -47,7 +47,7 @@ export class SyncQueue {
 
     this.queue.push(queuedFile);
 
-    console.log(`📝 Queued file: ${change.path} (${priority} priority, queue size: ${this.queue.length})`);
+    console.log(`Queued file: ${change.path} (${priority} priority, queue size: ${this.queue.length})`);
 
     if (priority === "immediate") {
       // Process immediate files right away
@@ -65,7 +65,7 @@ export class SyncQueue {
       return;
     }
 
-    console.log(`⚡ Processing ${immediateFiles.length} immediate files`);
+    console.log(`Processing ${immediateFiles.length} immediate files`);
 
     // Remove immediate files from queue before processing
     this.queue = this.queue.filter(item => item.priority !== "immediate");
@@ -106,7 +106,7 @@ export class SyncQueue {
         return;
       }
 
-      console.log(`📦 Processing batch of ${batchFiles.length} files`);
+      console.log(`Processing batch of ${batchFiles.length} files`);
 
       // Remove batch files from queue before processing
       this.queue = this.queue.filter(item =>
@@ -154,12 +154,12 @@ export class SyncQueue {
       this.config.onSync(queuedFile, true);
 
     } catch (error) {
-      console.error(`❌ Failed to sync file ${change.path}:`, error);
+      console.error(`Failed to sync file ${change.path}:`, error);
 
       // Retry logic
       if (queuedFile.retryCount < this.config.maxRetries) {
         queuedFile.retryCount++;
-        console.log(`🔄 Retrying sync for ${change.path} (attempt ${queuedFile.retryCount}/${this.config.maxRetries})`);
+        console.log(`Retrying sync for ${change.path} (attempt ${queuedFile.retryCount}/${this.config.maxRetries})`);
 
         // Add back to queue with exponential backoff
         setTimeout(() => {
@@ -174,7 +174,7 @@ export class SyncQueue {
         }, Math.pow(2, queuedFile.retryCount) * 1000); // 2s, 4s, 8s...
 
       } else {
-        console.error(`💀 Max retries exceeded for file: ${change.path}`);
+        console.error(`Max retries exceeded for file: ${change.path}`);
         this.config.onSync(queuedFile, false);
         this.config.onError(error as Error, queuedFile);
       }
@@ -182,7 +182,7 @@ export class SyncQueue {
   }
 
   async flush(): Promise<void> {
-    console.log(`🚿 Flushing sync queue (${this.queue.length} files)`);
+    console.log(`Flushing sync queue (${this.queue.length} files)`);
 
     // Clear any pending batch timer
     if (this.batchTimer) {
@@ -196,11 +196,11 @@ export class SyncQueue {
       await this.processBatchFiles();
     }
 
-    console.log("✅ Sync queue flushed");
+    console.log("Sync queue flushed");
   }
 
   stop(): void {
-    console.log("🛑 Stopping sync queue");
+    console.log("Stopping sync queue");
 
     this.isStopped = true;
 
@@ -210,11 +210,11 @@ export class SyncQueue {
     }
 
     this.queue = [];
-    console.log("✅ Sync queue stopped");
+    console.log("Sync queue stopped");
   }
 
   start(): void {
-    console.log("▶️ Starting sync queue");
+    console.log("Starting sync queue");
     this.isStopped = false;
 
     // If there are queued files, schedule processing

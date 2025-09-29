@@ -40,7 +40,11 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@repo/convex/_generated/api";
 import { useState } from "react";
 import { nanoid } from "nanoid";
-import { getWorkerLogsAction, getWorkerStatusAction, debugSandboxAction } from "@/actions/worker-status";
+import {
+  getWorkerLogsAction,
+  getWorkerStatusAction,
+  debugSandboxAction,
+} from "@/actions/worker-status";
 
 export function SandboxClient({
   sandboxId,
@@ -52,6 +56,7 @@ export function SandboxClient({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const messages = useQuery(api.messages.getAllMessages);
+  const currentSessionId = useQuery(api.messages.getCurrentSessionId);
   const insertUserMessage = useMutation(api.messages.insertUserMessage);
 
   const handleSubmit = async (message: PromptInputMessage) => {
@@ -62,6 +67,7 @@ export function SandboxClient({
           id: nanoid(),
           parts: [{ type: "text", text: message.text }],
           metadata: { sandboxId },
+          session_id: currentSessionId || undefined,
         });
       } catch (error) {
         console.error("Failed to send message:", error);
@@ -135,8 +141,8 @@ export function SandboxClient({
                   )
                   .pop();
 
-                const getToolTriggerContent = (part: any) => {
-                  const fileName = part.input?.file_path?.split("/").pop();
+                const getToolTriggerContent = (part: { name: string; input?: Record<string, unknown> }) => {
+                  const fileName = typeof part.input?.file_path === 'string' ? part.input.file_path.split("/").pop() : undefined;
 
                   switch (part.name) {
                     case "Glob":
@@ -144,7 +150,7 @@ export function SandboxClient({
                         <span className="flex items-center gap-2">
                           Searching for{" "}
                           <TaskItemFile>
-                            {part.input?.pattern || "files"}
+                            {typeof part.input?.pattern === 'string' ? part.input.pattern : "files"}
                           </TaskItemFile>
                         </span>
                       );
@@ -170,26 +176,26 @@ export function SandboxClient({
                         </span>
                       );
                     case "Bash":
-                      return `Running: ${part.input?.command?.slice(0, 40) || "bash"}${part.input?.command?.length > 40 ? "..." : ""}`;
+                      return `Running: ${typeof part.input?.command === 'string' ? part.input.command.slice(0, 40) : "bash"}${typeof part.input?.command === 'string' && part.input.command.length > 40 ? "..." : ""}`;
                     case "Grep":
                       return (
                         <span className="flex items-center gap-2">
                           Searching for{" "}
                           <TaskItemFile>
-                            {part.input?.pattern || "pattern"}
+                            {typeof part.input?.pattern === 'string' ? part.input.pattern : "pattern"}
                           </TaskItemFile>
                         </span>
                       );
                     case "Task":
-                      return part.input?.description || "Running task";
+                      return typeof part.input?.description === 'string' ? part.input.description : "Running task";
                     case "WebFetch":
-                      return `Fetching ${part.input?.url || "web content"}`;
+                      return `Fetching ${typeof part.input?.url === 'string' ? part.input.url : "web content"}`;
                     case "WebSearch":
                       return (
                         <span className="flex items-center gap-2">
                           Web search:{" "}
                           <TaskItemFile>
-                            {part.input?.query || "query"}
+                            {typeof part.input?.query === 'string' ? part.input.query : "query"}
                           </TaskItemFile>
                         </span>
                       );
@@ -211,9 +217,10 @@ export function SandboxClient({
                           src={
                             message.role === "user"
                               ? "/user-avatar.png"
-                              : "/assistant-avatar.png"
+                              : "/claude.png"
                           }
                           name={message.role === "user" ? "User" : "Assistant"}
+                          className="size-6 ring-0"
                         />
                       </Message>
                     )}
@@ -224,9 +231,9 @@ export function SandboxClient({
                         <div className="mb-2">
                           {latestTodoWrite.input.todos
                             .filter(
-                              (todo: any) => todo.status === "in_progress",
+                              (todo: { status: string }) => todo.status === "in_progress",
                             )
-                            .map((todo: any, index: number) => (
+                            .map((todo: { activeForm: string }, index: number) => (
                               <Task key={`todo-${index}`} className="my-2">
                                 <TaskTrigger title={todo.activeForm} />
                                 <TaskContent>

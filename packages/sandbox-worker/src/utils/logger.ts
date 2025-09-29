@@ -9,7 +9,7 @@ export interface LogContext {
   operation?: string;
   duration?: number;
   fileCount?: number;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 class Logger {
@@ -52,7 +52,7 @@ class Logger {
     const levelEmoji = this.getLevelEmoji(level);
     const levelStr = level.toUpperCase().padEnd(5);
 
-    let formatted = `${timestamp} ${levelEmoji} [${levelStr}] [${this.sandboxId}] ${message}`;
+    let formatted = `${timestamp} ${levelEmoji} [${this.sandboxId}] ${message}`;
 
     if (context) {
       const contextStr = Object.entries(context)
@@ -70,11 +70,11 @@ class Logger {
 
   private getLevelEmoji(level: LogLevel): string {
     switch (level) {
-      case "debug": return "🔍";
-      case "info": return "ℹ️";
-      case "warn": return "⚠️";
-      case "error": return "❌";
-      default: return "📝";
+      case "debug": return "[DEBUG]";
+      case "info": return "[INFO] ";
+      case "warn": return "[WARN] ";
+      case "error": return "[ERROR]";
+      default: return "[LOG]  ";
     }
   }
 

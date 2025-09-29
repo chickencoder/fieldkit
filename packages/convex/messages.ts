@@ -14,6 +14,7 @@ export const getLastUserMessage = query({
       ),
       parts: v.array(v.any()),
       metadata: v.optional(v.any()),
+      session_id: v.optional(v.string()),
     }),
     v.null(),
   ),
@@ -49,6 +50,7 @@ export const insertAssistantMessage = mutation({
     id: v.string(),
     parts: v.array(v.any()),
     metadata: v.optional(v.any()),
+    session_id: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("messages", {
@@ -56,6 +58,7 @@ export const insertAssistantMessage = mutation({
       role: "assistant",
       parts: args.parts,
       metadata: args.metadata,
+      session_id: args.session_id,
     });
   },
 });
@@ -65,6 +68,7 @@ export const upsertAssistantMessage = mutation({
     id: v.string(),
     parts: v.array(v.any()),
     metadata: v.optional(v.any()),
+    session_id: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     // Try to find existing message
@@ -78,6 +82,7 @@ export const upsertAssistantMessage = mutation({
       return await ctx.db.patch(existingMessage._id, {
         parts: args.parts,
         metadata: args.metadata,
+        session_id: args.session_id,
       });
     } else {
       // Insert new message
@@ -86,6 +91,7 @@ export const upsertAssistantMessage = mutation({
         role: "assistant",
         parts: args.parts,
         metadata: args.metadata,
+        session_id: args.session_id,
       });
     }
   },
@@ -96,6 +102,7 @@ export const insertUserMessage = mutation({
     id: v.string(),
     parts: v.array(v.any()),
     metadata: v.optional(v.any()),
+    session_id: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("messages", {
@@ -103,6 +110,7 @@ export const insertUserMessage = mutation({
       role: "user",
       parts: args.parts,
       metadata: args.metadata,
+      session_id: args.session_id,
     });
   },
 });
@@ -121,11 +129,72 @@ export const getAllMessages = query({
       ),
       parts: v.array(v.any()),
       metadata: v.optional(v.any()),
+      session_id: v.optional(v.string()),
     })
   ),
   handler: async (ctx) => {
     return await ctx.db
       .query("messages")
+      .order("asc")
+      .collect();
+  },
+});
+
+export const getLastSessionId = query({
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx) => {
+    const lastMessageWithSession = await ctx.db
+      .query("messages")
+      .filter((q) => q.neq(q.field("session_id"), undefined))
+      .order("desc")
+      .first();
+
+    return lastMessageWithSession?.session_id || null;
+  },
+});
+
+export const getCurrentSessionId = query({
+  returns: v.union(v.string(), v.null()),
+  handler: async (ctx) => {
+    // Get the most recent assistant message, which should have the current session_id
+    const lastAssistantMessage = await ctx.db
+      .query("messages")
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("role"), "assistant"),
+          q.neq(q.field("session_id"), undefined)
+        )
+      )
+      .order("desc")
+      .first();
+
+    return lastAssistantMessage?.session_id || null;
+  },
+});
+
+export const getMessagesBySessionId = query({
+  args: {
+    session_id: v.string(),
+  },
+  returns: v.array(
+    v.object({
+      _id: v.id("messages"),
+      _creationTime: v.number(),
+      id: v.string(),
+      role: v.union(
+        v.literal("system"),
+        v.literal("user"),
+        v.literal("assistant"),
+      ),
+      parts: v.array(v.any()),
+      metadata: v.optional(v.any()),
+      session_id: v.optional(v.string()),
+    })
+  ),
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("messages")
+      .filter((q) => q.eq(q.field("session_id"), args.session_id))
       .order("asc")
       .collect();
   },
