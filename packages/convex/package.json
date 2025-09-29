@@ -1,0 +1,29 @@
+{
+  "name": "@repo/convex",
+  "version": "0.1.0",
+  "private": true,
+  "main": "_generated/api.js",
+  "types": "_generated/api.d.ts",
+  "exports": {
+    "./_generated/api": {
+      "types": "./_generated/api.d.ts",
+      "default": "./_generated/api.js"
+    },
+    "./types": {
+      "types": "./types.ts",
+      "default": "./types.ts"
+    }
+  },
+  "scripts": {
+    "dev": "convex dev",
+    "build": "tsc --noEmit",
+    "deploy": "convex deploy",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "convex": "^1.27.0"
+  },
+  "devDependencies": {
+    "typescript": "^5"
+  }
+}
