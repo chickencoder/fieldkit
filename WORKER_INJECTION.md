@@ -34,14 +34,14 @@ When `startSandboxAction` is called:
 5. **Permission Setup**: Makes the file executable with `chmod +x`
 6. **Environment Setup**: Configures environment variables (Convex URL, R2 credentials)
 7. **Background Start**: Starts worker with `nohup` and saves PID to `/tmp/worker.pid`
-8. **Status Check**: Verifies worker is running and healthy
+8. **Immediate Return**: Action returns immediately after starting worker (non-blocking)
 9. **Project Setup**: Runs project install and dev commands
 
 ### 3. Worker Lifecycle
 
 ```bash
-# Worker is started in background
-nohup node /tmp/sandbox-worker.js > /tmp/worker.log 2>&1 & echo $! > /tmp/worker.pid
+# Worker is started in background (no logs to file)
+nohup node /tmp/sandbox-worker.js >/dev/null 2>&1 & echo $! > /tmp/worker.pid
 
 # Check if worker is running
 kill -0 $(cat /tmp/worker.pid) 2>/dev/null
@@ -49,9 +49,11 @@ kill -0 $(cat /tmp/worker.pid) 2>/dev/null
 # Stop worker
 kill $(cat /tmp/worker.pid) 2>/dev/null; rm -f /tmp/worker.pid
 
-# View worker logs
-tail -f /tmp/worker.log
+# Worker logs go to console (structured logging)
+# Use getWorkerStatus() to check if worker is running
 ```
+
+**Note**: The worker starts asynchronously in the background. The sandbox action returns immediately after injection, and the worker initializes independently. Use `getWorkerStatusAction()` to monitor worker status.
 
 ## Environment Variables
 

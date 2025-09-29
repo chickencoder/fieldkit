@@ -44,5 +44,5 @@ export default defineConfig({
     js: "#!/usr/bin/env node\n",
   },
   // Ensure all dependencies are bundled (remove from external list)
-  noExternal: [/.*/], // Bundle everything except Node.js built-ins
+  noExternal: [/.*/]
 });

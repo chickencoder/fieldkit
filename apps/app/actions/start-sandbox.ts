@@ -27,32 +27,30 @@ export const startSandboxAction = actionClient
       timeout: ms("10m"),
     });
 
-    console.log("installing claude code");
-    const installClaudeCode = await runCommandInSandbox(sandbox, "npm", [
-      "install",
-      "-g",
-      "@anthropic-ai/claude-code",
-    ]);
-    if (!installClaudeCode.success) {
-      throw new Error(installClaudeCode.error);
-    }
 
     // Inject and start the sandbox worker
     console.log("injecting sandbox worker");
-    const workerResult = await injectWorkerIntoSandbox(sandbox, {
-      sandboxId: sandbox.sandboxId,
-      convexUrl: process.env.CONVEX_URL!,
-      r2Config: process.env.R2_ENDPOINT ? {
-        endpoint: process.env.R2_ENDPOINT,
-        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-        bucketName: process.env.R2_BUCKET_NAME!,
-      } : undefined,
-    });
 
-    if (!workerResult.success) {
-      console.warn("⚠️ Failed to inject worker, continuing without it:", workerResult.error);
-      // Don't throw error here - continue without worker if it fails
+    // Get Convex URL (check multiple possible sources)
+    const convexUrl = process.env.CONVEX_URL || process.env.NEXT_PUBLIC_CONVEX_URL;
+
+    if (!convexUrl) {
+      console.warn("⚠️ No CONVEX_URL found, skipping worker injection");
+    } else {
+      const workerResult = await injectWorkerIntoSandbox(sandbox, {
+        sandboxId: sandbox.sandboxId,
+        convexUrl,
+        r2Config: process.env.R2_ENDPOINT ? {
+          endpoint: process.env.R2_ENDPOINT,
+          accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+          bucketName: process.env.R2_BUCKET_NAME!,
+        } : undefined,
+      });
+
+      if (!workerResult.success) {
+        console.warn("⚠️ Failed to inject worker, continuing without it:", workerResult.error);
+      }
     }
 
     console.log("running install command");

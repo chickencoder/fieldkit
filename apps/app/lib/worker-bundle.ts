@@ -111,6 +111,12 @@ export class WorkerBundler {
       bucketName: string;
     };
   }): Record<string, string> {
+    console.log("📋 Generating worker environment variables", {
+      sandboxId: options.sandboxId,
+      convexUrl: options.convexUrl?.substring(0, 50) + "...",
+      hasR2Config: !!options.r2Config,
+    });
+
     const env: Record<string, string> = {
       CONVEX_URL: options.convexUrl,
       SANDBOX_ID: options.sandboxId,
@@ -137,8 +143,11 @@ export class WorkerBundler {
       .map(([key, value]) => `export ${key}="${value}"`)
       .join(" && ");
 
-    // Command to start worker in background with logging
-    return `${envExports} && nohup node /tmp/sandbox-worker.js > /tmp/worker.log 2>&1 & echo $! > /tmp/worker.pid`;
+    // Command to start worker in background with logging for debugging
+    // - nohup: prevents termination when parent shell exits
+    // - & puts process in background
+    // - Log to /tmp/worker.log instead of /dev/null for debugging
+    return `${envExports} && (nohup node /tmp/sandbox-worker.js >/tmp/worker.log 2>&1 & echo $! > /tmp/worker.pid && echo "Worker started with PID $(cat /tmp/worker.pid)")`;
   }
 
   /**
@@ -153,5 +162,12 @@ export class WorkerBundler {
    */
   static generateStatusCommand(): string {
     return "if [ -f /tmp/worker.pid ] && kill -0 $(cat /tmp/worker.pid) 2>/dev/null; then echo 'running'; else echo 'stopped'; fi";
+  }
+
+  /**
+   * Generate command to get worker logs
+   */
+  static generateLogsCommand(): string {
+    return "if [ -f /tmp/worker.log ]; then tail -n 50 /tmp/worker.log; else echo 'No worker logs found'; fi";
   }
 }

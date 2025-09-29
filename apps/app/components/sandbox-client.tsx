@@ -12,6 +12,7 @@ import {
   ConversationEmptyState,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
+import { Response } from "@/components/ai-elements/response";
 import {
   Message,
   MessageContent,
@@ -39,6 +40,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@repo/convex/_generated/api";
 import { useState } from "react";
 import { nanoid } from "nanoid";
+import { getWorkerLogsAction, getWorkerStatusAction, debugSandboxAction } from "@/actions/worker-status";
 
 export function SandboxClient({
   sandboxId,
@@ -69,6 +71,49 @@ export function SandboxClient({
     }
   };
 
+  const handleDebugWorker = async () => {
+    console.log("🔍 Debugging worker for sandbox:", sandboxId);
+
+    try {
+      // Get worker status
+      const status = await getWorkerStatusAction({ sandboxId });
+      console.log("📊 Worker Status:", status);
+
+      if (!status.data?.success) {
+        console.error("❌ Failed to get worker status:", status.data?.error);
+        return;
+      }
+
+      // Get detailed sandbox debug info
+      const debug = await debugSandboxAction({ sandboxId });
+      console.log("🔧 Sandbox Debug Info:");
+      if (debug.data?.success) {
+        console.log(debug.data.debug || "No debug output");
+      } else {
+        console.error("❌ Debug command failed:", debug.data?.error);
+      }
+
+      // Get worker logs
+      const logs = await getWorkerLogsAction({ sandboxId });
+      console.log("📝 Worker Logs:");
+      if (logs.data?.success) {
+        console.log(logs.data.logs || "No logs found");
+      } else {
+        console.error("❌ Failed to get logs:", logs.data?.error);
+      }
+
+      if (!status.data?.isRunning) {
+        console.warn("⚠️ Worker is not running!");
+        console.log("💡 This could mean:");
+        console.log("  - Sandbox is not running");
+        console.log("  - Worker was never injected");
+        console.log("  - Worker failed to start");
+      }
+    } catch (error) {
+      console.error("❌ Failed to debug worker:", error);
+    }
+  };
+
   return (
     <div className="h-dvh flex gap-4 p-4">
       <div className="w-96 flex flex-col min-h-0">
@@ -76,38 +121,52 @@ export function SandboxClient({
           <ConversationContent className="p-1">
             {messages && messages.length > 0 ? (
               messages.map((message) => {
-                const textParts = message.parts.filter((part) => part.type === "text");
-                const toolParts = message.parts.filter((part) => part.type === "tool_use" && part.name !== "TodoWrite");
+                const textParts = message.parts.filter(
+                  (part) => part.type === "text",
+                );
+                const toolParts = message.parts.filter(
+                  (part) =>
+                    part.type === "tool_use" && part.name !== "TodoWrite",
+                );
                 const latestTodoWrite = message.parts
-                  .filter((part) => part.type === "tool_use" && part.name === "TodoWrite")
+                  .filter(
+                    (part) =>
+                      part.type === "tool_use" && part.name === "TodoWrite",
+                  )
                   .pop();
 
-                const getToolTriggerContent = (part) => {
-                  const fileName = part.input?.file_path?.split('/').pop();
+                const getToolTriggerContent = (part: any) => {
+                  const fileName = part.input?.file_path?.split("/").pop();
 
                   switch (part.name) {
                     case "Glob":
                       return (
                         <span className="flex items-center gap-2">
-                          Searching for <TaskItemFile>{part.input?.pattern || "files"}</TaskItemFile>
+                          Searching for{" "}
+                          <TaskItemFile>
+                            {part.input?.pattern || "files"}
+                          </TaskItemFile>
                         </span>
                       );
                     case "Read":
                       return (
                         <span className="flex items-center gap-2">
-                          Reading <TaskItemFile>{fileName || "file"}</TaskItemFile>
+                          Reading{" "}
+                          <TaskItemFile>{fileName || "file"}</TaskItemFile>
                         </span>
                       );
                     case "Edit":
                       return (
                         <span className="flex items-center gap-2">
-                          Editing <TaskItemFile>{fileName || "file"}</TaskItemFile>
+                          Editing{" "}
+                          <TaskItemFile>{fileName || "file"}</TaskItemFile>
                         </span>
                       );
                     case "Write":
                       return (
                         <span className="flex items-center gap-2">
-                          Writing <TaskItemFile>{fileName || "file"}</TaskItemFile>
+                          Writing{" "}
+                          <TaskItemFile>{fileName || "file"}</TaskItemFile>
                         </span>
                       );
                     case "Bash":
@@ -115,7 +174,10 @@ export function SandboxClient({
                     case "Grep":
                       return (
                         <span className="flex items-center gap-2">
-                          Searching for <TaskItemFile>{part.input?.pattern || "pattern"}</TaskItemFile>
+                          Searching for{" "}
+                          <TaskItemFile>
+                            {part.input?.pattern || "pattern"}
+                          </TaskItemFile>
                         </span>
                       );
                     case "Task":
@@ -125,7 +187,10 @@ export function SandboxClient({
                     case "WebSearch":
                       return (
                         <span className="flex items-center gap-2">
-                          Web search: <TaskItemFile>{part.input?.query || "query"}</TaskItemFile>
+                          Web search:{" "}
+                          <TaskItemFile>
+                            {part.input?.query || "query"}
+                          </TaskItemFile>
                         </span>
                       );
                     default:
@@ -139,7 +204,7 @@ export function SandboxClient({
                       <Message from={message.role}>
                         <MessageContent>
                           {textParts.map((part, index) => (
-                            <div key={index}>{part.text}</div>
+                            <Response key={index}>{part.text}</Response>
                           ))}
                         </MessageContent>
                         <MessageAvatar
@@ -153,24 +218,28 @@ export function SandboxClient({
                       </Message>
                     )}
 
-                    {latestTodoWrite && latestTodoWrite.input?.todos && toolParts.length > 0 && (
-                      <div className="mb-2">
-                        {latestTodoWrite.input.todos
-                          .filter((todo) => todo.status === "in_progress")
-                          .map((todo, index) => (
-                            <Task key={`todo-${index}`} className="my-2">
-                              <TaskTrigger title={todo.activeForm} />
-                              <TaskContent>
-                                {toolParts.map((part, toolIndex) => (
-                                  <TaskItem key={`tool-${toolIndex}`}>
-                                    {getToolTriggerContent(part)}
-                                  </TaskItem>
-                                ))}
-                              </TaskContent>
-                            </Task>
-                          ))}
-                      </div>
-                    )}
+                    {latestTodoWrite &&
+                      latestTodoWrite.input?.todos &&
+                      toolParts.length > 0 && (
+                        <div className="mb-2">
+                          {latestTodoWrite.input.todos
+                            .filter(
+                              (todo: any) => todo.status === "in_progress",
+                            )
+                            .map((todo: any, index: number) => (
+                              <Task key={`todo-${index}`} className="my-2">
+                                <TaskTrigger title={todo.activeForm} />
+                                <TaskContent>
+                                  {toolParts.map((part, toolIndex) => (
+                                    <TaskItem key={`tool-${toolIndex}`}>
+                                      {getToolTriggerContent(part)}
+                                    </TaskItem>
+                                  ))}
+                                </TaskContent>
+                              </Task>
+                            ))}
+                        </div>
+                      )}
                   </div>
                 );
               })
@@ -203,6 +272,13 @@ export function SandboxClient({
         <WebPreview defaultUrl={domain} className="h-full">
           <WebPreviewNavigation>
             <WebPreviewUrl src={domain} />
+            <button
+              onClick={handleDebugWorker}
+              className="ml-2 px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded border"
+              title="Debug worker (check console)"
+            >
+              Debug Worker
+            </button>
           </WebPreviewNavigation>
           <WebPreviewBody src={domain} className="bg-white flex-1" />
         </WebPreview>

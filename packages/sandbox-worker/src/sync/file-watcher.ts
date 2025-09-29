@@ -21,7 +21,7 @@ export interface WatcherConfig {
 }
 
 export class FileWatcher {
-  private watcher: chokidar.FSWatcher | null = null;
+  private watcher: ReturnType<typeof chokidar.watch> | null = null;
   private config: WatcherConfig;
   private isWatching = false;
 
@@ -45,6 +45,8 @@ export class FileWatcher {
     "**/*.temp",
     "**/*.swp",
     "**/*.swo",
+    // But allow our sandbox logs
+    "!/tmp/sandbox-logs/**",
   ];
 
   // Patterns for files that should be synced immediately (critical config files)
@@ -63,6 +65,7 @@ export class FileWatcher {
     "**/postcss.config.*",
     "**/.eslintrc.*",
     "**/.prettierrc.*",
+    "/tmp/sandbox-logs/**/*.log",
   ];
 
   constructor(config: WatcherConfig) {
@@ -100,11 +103,12 @@ export class FileWatcher {
         },
       });
 
-      this.watcher.on("add", (path) => this.handleFileEvent(path, "add"));
-      this.watcher.on("change", (path) => this.handleFileEvent(path, "change"));
-      this.watcher.on("unlink", (path) => this.handleFileEvent(path, "unlink"));
+      this.watcher.on("add", (path: string) => this.handleFileEvent(path, "add"));
+      this.watcher.on("change", (path: string) => this.handleFileEvent(path, "change"));
+      this.watcher.on("unlink", (path: string) => this.handleFileEvent(path, "unlink"));
 
-      this.watcher.on("error", (error) => {
+      this.watcher.on("error", (err: unknown) => {
+        const error = err instanceof Error ? err : new Error(String(err));
         console.error("❌ File watcher error:", error);
         this.config.onError(error);
       });
@@ -228,6 +232,14 @@ export class FileWatcher {
 
       for (const filePath of files) {
         try {
+          if (!filePath) {
+            console.warn("Skipping undefined file path");
+            continue;
+          }
+          if (!this.config.rootDir) {
+            throw new Error("Root directory is undefined");
+          }
+
           const fullPath = resolve(this.config.rootDir, filePath);
           const content = await readFile(fullPath);
           const stats = await stat(fullPath);

@@ -80,6 +80,7 @@ export class FileSync {
     }
 
     console.log(`🚀 Initializing FileSync for sandbox: ${this.config.sandboxId}`);
+    console.log(`📁 Root directory: ${this.config.rootDir}`);
 
     try {
       // Check if we have any existing files in R2 to restore
@@ -204,6 +205,13 @@ export class FileSync {
   }
 
   private async restoreFile(file: SyncFile): Promise<void> {
+    if (!file.path) {
+      throw new Error("File path is undefined");
+    }
+    if (!this.config.rootDir) {
+      throw new Error("Root directory is undefined");
+    }
+
     const localPath = join(this.config.rootDir, file.path);
 
     // Check if local file exists and is the same

@@ -4,25 +4,48 @@ import { config } from "dotenv";
 import { query } from "@anthropic-ai/claude-code";
 import { v4 as uuidv4 } from "uuid";
 import { FileSync } from "./sync/file-sync";
+import { logger } from "./utils/logger";
 
 config();
 
+// Environment validation
+if (!process.env.CONVEX_URL) {
+  logger.error("CONVEX_URL environment variable is required");
+  process.exit(1);
+}
+
+logger.info("Starting sandbox worker", {
+  nodeVersion: process.version,
+  platform: process.platform,
+  cwd: process.cwd(),
+  convexUrl: process.env.CONVEX_URL?.substring(0, 50) + "...",
+  sandboxId: process.env.SANDBOX_ID,
+});
+
 const client = new ConvexClient(process.env.CONVEX_URL!);
+const sandboxId = process.env.SANDBOX_ID || `sandbox-${Date.now()}`;
 
 // Global FileSync instance
 let fileSync: FileSync | null = null;
 
 async function processUserMessage(userMessage: any) {
   if (!userMessage) {
-    console.warn("Received null/undefined user message, skipping processing");
+    logger.warn("Received null/undefined user message, skipping processing");
     return;
   }
 
-  console.log(
-    `🚀 Processing user message: ${userMessage.id} (created at: ${new Date(userMessage._creationTime).toISOString()})`,
-  );
+  logger.info("Processing user message", {
+    messageId: userMessage.id,
+    messageType: typeof userMessage,
+    hasId: !!userMessage.id,
+    hasParts: !!userMessage.parts,
+    partsLength: userMessage.parts?.length,
+  });
 
-  const startTime = Date.now();
+  const op = logger.operation("process-user-message", {
+    messageId: userMessage.id,
+    createdAt: userMessage._creationTime,
+  });
 
   try {
     // Validate user message structure
@@ -43,12 +66,15 @@ async function processUserMessage(userMessage: any) {
       throw new Error("No valid text content found in user message");
     }
 
-    console.log(
-      `📝 User content (${userContent.length} chars): ${userContent.substring(0, 100)}${userContent.length > 100 ? "..." : ""}`,
-    );
+    op.progress("Extracted user content", {
+      contentLength: userContent.length,
+      preview: userContent.substring(0, 100),
+    });
 
     // Query Claude Code with the user message
-    console.log("🤖 Querying Claude Code...");
+    logger.claude("Starting Claude Code query", {
+      contentLength: userContent.length,
+    });
     const claudeQuery = query({
       prompt: userContent,
       options: {
@@ -61,19 +87,16 @@ async function processUserMessage(userMessage: any) {
 
     // Generate assistant message ID upfront for streaming
     const assistantMessageId = uuidv4();
-    console.log(`🆔 Generated assistant message ID: ${assistantMessageId}`);
+    logger.convex("Generated assistant message ID", { assistantMessageId });
 
     // Function to update the message in the database
     const updateMessage = async (isCompleted = false) => {
-      const processingDuration = Date.now() - startTime;
-
       try {
         await client.mutation(api.messages.upsertAssistantMessage, {
           id: assistantMessageId,
           parts: [...messageChunks], // Create a copy to avoid reference issues
           metadata: {
             processingTime: Date.now(),
-            processingDurationMs: processingDuration,
             userMessageId: userMessage.id,
             chunkCount,
             isCompleted,
@@ -81,23 +104,30 @@ async function processUserMessage(userMessage: any) {
           },
         });
 
-        console.log(
-          `💾 ${isCompleted ? "Final" : "Streaming"} update: ${messageChunks.length} parts (${processingDuration}ms)`,
+        logger.convex(
+          isCompleted ? "Final message update" : "Streaming update",
+          {
+            partsCount: messageChunks.length,
+            chunkCount,
+            isCompleted,
+          },
         );
       } catch (error) {
-        console.error("❌ Failed to update message:", error);
+        logger.error("Failed to update message", error as Error, {
+          component: "convex",
+        });
       }
     };
 
     // Stream Claude's response
     for await (const message of claudeQuery) {
       chunkCount++;
-      console.log(`📨 Received chunk ${chunkCount}: ${message.type}`);
+      logger.debug("Received Claude chunk", { chunkCount, type: message.type });
 
       let shouldUpdate = false;
 
       if (message.type === "assistant") {
-        console.log(`🤖 Assistant message received`);
+        logger.debug("Assistant message received");
         // Extract content from the API assistant message
         if (message.message.content) {
           for (const contentBlock of message.message.content) {
@@ -108,7 +138,9 @@ async function processUserMessage(userMessage: any) {
               });
               shouldUpdate = true;
             } else if (contentBlock.type === "tool_use") {
-              console.log(`🔧 Tool use: ${contentBlock.name}`);
+              logger.debug("Tool use detected", {
+                toolName: contentBlock.name,
+              });
               messageChunks.push({
                 type: "tool_use",
                 name: contentBlock.name,
@@ -120,7 +152,7 @@ async function processUserMessage(userMessage: any) {
           }
         }
       } else if (message.type === "stream_event") {
-        console.log(`🌊 Stream event: ${message.event.type}`);
+        logger.debug("Stream event", { eventType: message.event.type });
         // Handle partial assistant messages during streaming
         if (
           message.event.type === "content_block_delta" &&
@@ -135,7 +167,9 @@ async function processUserMessage(userMessage: any) {
           message.event.type === "content_block_start" &&
           message.event.content_block.type === "tool_use"
         ) {
-          console.log(`🔧 Tool use start: ${message.event.content_block.name}`);
+          logger.debug("Tool use start", {
+            toolName: message.event.content_block.name,
+          });
           messageChunks.push({
             type: "tool_use",
             name: message.event.content_block.name,
@@ -145,14 +179,16 @@ async function processUserMessage(userMessage: any) {
           shouldUpdate = true;
         }
       } else if (message.type === "result") {
-        console.log(`📊 Result: ${message.subtype} (${message.duration_ms}ms)`);
-        if (message.subtype !== "success") {
-          console.log(`⚠️ Non-success result: ${message.subtype}`);
-        }
+        const isSuccess = message.subtype === "success";
+        logger.info("Claude query result", {
+          subtype: message.subtype,
+          duration: message.duration_ms,
+          success: isSuccess,
+        });
       } else if (message.type === "system") {
-        console.log(`⚙️ System message: ${message.subtype}`);
+        logger.debug("System message", { subtype: message.subtype });
       } else {
-        console.log(`❓ Unknown message type: ${message.type}`);
+        logger.debug("Unknown message type", { type: message.type });
       }
 
       // Update the database with new chunks
@@ -161,36 +197,30 @@ async function processUserMessage(userMessage: any) {
       }
     }
 
-    console.log(
-      `✅ Claude Code query completed. Received ${chunkCount} chunks, ${messageChunks.length} message parts`,
-    );
+    op.success("Claude Code query completed", {
+      chunkCount,
+      partsCount: messageChunks.length,
+    });
 
     // Final update to mark as completed
     if (messageChunks.length > 0) {
       await updateMessage(true);
-      console.log(
-        `✅ Successfully completed assistant message: ${assistantMessageId}`,
-      );
+      logger.convex("Assistant message completed", { assistantMessageId });
     } else {
-      console.warn("⚠️ No message chunks received from Claude Code");
+      logger.warn("No message chunks received from Claude Code");
     }
   } catch (error) {
-    const processingDuration = Date.now() - startTime;
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error";
-    const errorStack = error instanceof Error ? error.stack : undefined;
-
-    console.error(
-      `❌ Error processing user message ${userMessage.id}:`,
-      errorMessage,
-    );
-    if (errorStack) {
-      console.error("Stack trace:", errorStack);
-    }
+    op.error("Failed to process user message", error as Error, {
+      messageId: userMessage.id,
+    });
 
     try {
       // Insert error message
       const errorMessageId = uuidv4();
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      const errorStack = error instanceof Error ? error.stack : undefined;
+
       await client.mutation(api.messages.upsertAssistantMessage, {
         id: errorMessageId,
         parts: [
@@ -204,76 +234,91 @@ async function processUserMessage(userMessage: any) {
           errorMessage,
           errorStack,
           processingTime: Date.now(),
-          processingDurationMs: processingDuration,
           userMessageId: userMessage.id,
           isCompleted: true,
           workerVersion: "1.0.0",
         },
       });
 
-      console.log(`💾 Inserted error message: ${errorMessageId}`);
+      logger.convex("Inserted error message", { errorMessageId });
     } catch (insertError) {
-      console.error("❌ Failed to insert error message:", insertError);
+      logger.error("Failed to insert error message", insertError as Error, {
+        component: "convex",
+      });
     }
   }
 }
 
 // Environment validation
 if (!process.env.CONVEX_URL) {
-  console.error("❌ CONVEX_URL environment variable is required");
+  logger.error("CONVEX_URL environment variable is required");
   process.exit(1);
 }
 
 // Initialize FileSync if R2 config is available
 async function initializeFileSync(): Promise<void> {
   const r2Config = {
-    endpoint: process.env.R2_ENDPOINT,
-    accessKeyId: process.env.R2_ACCESS_KEY_ID,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
-    bucketName: process.env.R2_BUCKET_NAME,
+    endpoint: process.env.R2_ENDPOINT || "",
+    accessKeyId: process.env.R2_ACCESS_KEY_ID || "",
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || "",
+    bucketName: process.env.R2_BUCKET_NAME || "",
   };
 
   // Check if all R2 config is provided
-  if (!r2Config.endpoint || !r2Config.accessKeyId || !r2Config.secretAccessKey || !r2Config.bucketName) {
-    console.log("⚠️ R2 configuration not complete, file sync disabled");
-    console.log("Required env vars: R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME");
+  if (
+    !r2Config.endpoint ||
+    !r2Config.accessKeyId ||
+    !r2Config.secretAccessKey ||
+    !r2Config.bucketName
+  ) {
+    logger.warn("R2 configuration incomplete, file sync disabled", {
+      hasEndpoint: !!r2Config.endpoint,
+      hasAccessKey: !!r2Config.accessKeyId,
+      hasSecretKey: !!r2Config.secretAccessKey,
+      hasBucket: !!r2Config.bucketName,
+    });
     return;
   }
 
-  const sandboxId = process.env.SANDBOX_ID || `sandbox-${Date.now()}`;
   const rootDir = process.cwd();
 
   try {
-    console.log("🔄 Initializing file sync...");
+    const fsOp = logger.operation("initialize-file-sync", {
+      sandboxId,
+      rootDir,
+    });
 
     fileSync = new FileSync({
       sandboxId,
       rootDir,
       r2Config,
       onSyncComplete: (file, success) => {
-        console.log(`📁 Sync ${success ? "completed" : "failed"}: ${file}`);
+        logger.fileSync(`File sync ${success ? "completed" : "failed"}`, {
+          file,
+          success,
+        });
       },
       onError: (error, context) => {
-        console.error(`❌ File sync error${context ? ` (${context})` : ""}:`, error);
+        logger.error("File sync error", error, {
+          component: "file-sync",
+          context,
+        });
       },
     });
 
-    await fileSync.initialize();
-    await fileSync.start();
+    await fileSync?.initialize();
+    await fileSync?.start();
 
-    console.log("✅ File sync initialized and started");
+    fsOp.success("File sync started");
   } catch (error) {
-    console.error("❌ Failed to initialize file sync:", error);
+    logger.error("Failed to initialize file sync", error as Error);
     fileSync = null;
   }
 }
 
-console.log("🏁 Starting sandbox worker...");
-console.log(`📡 Connecting to Convex: ${process.env.CONVEX_URL}`);
-
 // Initialize file sync
-initializeFileSync().catch(error => {
-  console.error("❌ Failed to initialize file sync on startup:", error);
+initializeFileSync().catch((error) => {
+  logger.error("Failed to initialize file sync on startup", error as Error);
 });
 
 // Track processing state to prevent concurrent processing
@@ -283,21 +328,23 @@ let lastSeenMessageId: string | null = null;
 
 client.onUpdate(api.messages.getLastUserMessage, {}, (userMessage) => {
   if (userMessage) {
-    console.log(`📬 Received user message: ${userMessage.id}`);
+    logger.convex("Received user message", { messageId: userMessage.id });
 
     // On first subscription fire, just record the current message without processing
     if (!hasInitialized) {
       lastSeenMessageId = userMessage.id;
       hasInitialized = true;
-      console.log(
-        `🏁 Initialized with existing message: ${userMessage.id} (not processing)`,
-      );
+      logger.info("Initialized with existing message", {
+        messageId: userMessage.id,
+      });
       return;
     }
 
     // Only process if this is a new message we haven't seen before
     if (lastSeenMessageId === userMessage.id) {
-      console.log(`⏭️ Already seen message: ${userMessage.id} (skipping)`);
+      logger.debug("Already seen message, skipping", {
+        messageId: userMessage.id,
+      });
       return;
     }
 
@@ -305,7 +352,7 @@ client.onUpdate(api.messages.getLastUserMessage, {}, (userMessage) => {
     lastSeenMessageId = userMessage.id;
 
     if (isProcessing) {
-      console.log("⏳ Already processing a message, queuing this one...");
+      logger.warn("Already processing a message, queuing this one");
       // In a production system, you might want to implement a proper queue
       setTimeout(() => {
         if (!isProcessing) {
@@ -316,17 +363,16 @@ client.onUpdate(api.messages.getLastUserMessage, {}, (userMessage) => {
       processUserMessageSafely(userMessage);
     }
   } else {
-    console.log("📭 No unprocessed user messages");
     if (!hasInitialized) {
       hasInitialized = true;
-      console.log("🏁 Initialized with no pending messages");
+      logger.info("Initialized with no pending messages");
     }
   }
 });
 
 async function processUserMessageSafely(userMessage: any) {
   if (isProcessing) {
-    console.log("⏳ Still processing previous message, skipping");
+    logger.warn("Still processing previous message, skipping");
     return;
   }
 
@@ -334,32 +380,32 @@ async function processUserMessageSafely(userMessage: any) {
   try {
     await processUserMessage(userMessage);
   } catch (error) {
-    console.error("❌ Unhandled error in message processing:", error);
+    logger.error("Unhandled error in message processing", error as Error);
   } finally {
     isProcessing = false;
-    console.log("✅ Ready for next message");
+    logger.debug("Ready for next message");
   }
 }
 
 // Graceful shutdown handling
 async function shutdown(signal: string): Promise<void> {
-  console.log(`\n🛑 Received ${signal}, shutting down gracefully...`);
+  const shutdownOp = logger.operation("shutdown", { signal });
 
   try {
     // Stop file sync if running
     if (fileSync) {
-      console.log("🔄 Stopping file sync...");
+      shutdownOp.progress("Stopping file sync");
       await fileSync.stop();
-      console.log("✅ File sync stopped");
     }
 
     // Close Convex client
+    shutdownOp.progress("Closing Convex client");
     client.close();
-    console.log("✅ Convex client closed");
 
+    shutdownOp.success("Shutdown completed");
     process.exit(0);
   } catch (error) {
-    console.error("❌ Error during shutdown:", error);
+    shutdownOp.error("Shutdown failed", error as Error);
     process.exit(1);
   }
 }
@@ -367,4 +413,4 @@ async function shutdown(signal: string): Promise<void> {
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-console.log("✅ Sandbox worker is running and listening for messages...");
+logger.info("Sandbox worker ready", { status: "listening" });

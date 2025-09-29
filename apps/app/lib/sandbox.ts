@@ -63,7 +63,7 @@ export async function injectWorkerIntoSandbox(
       secretAccessKey: string;
       bucketName: string;
     };
-  }
+  },
 ): Promise<{ success: boolean; error?: string }> {
   try {
     console.log("📦 Building and injecting worker bundle into sandbox...");
@@ -72,12 +72,20 @@ export async function injectWorkerIntoSandbox(
     const bundle = await WorkerBundler.buildBundle();
 
     // Write the bundle to the sandbox
-    console.log(`📤 Uploading worker bundle (${(bundle.size / 1024).toFixed(1)}KB) to sandbox...`);
+    console.log(
+      `📤 Uploading worker bundle (${(bundle.size / 1024).toFixed(1)}KB) to sandbox...`,
+    );
 
-    await sandbox.writeFile("/tmp/sandbox-worker.js", bundle.content);
+    await sandbox.writeFiles([{
+      path: "/tmp/sandbox-worker.js",
+      content: Buffer.from(bundle.content)
+    }]);
 
     // Make the file executable
-    const chmodResult = await runCommandInSandbox(sandbox, "chmod", ["+x", "/tmp/sandbox-worker.js"]);
+    const chmodResult = await runCommandInSandbox(sandbox, "chmod", [
+      "+x",
+      "/tmp/sandbox-worker.js",
+    ]);
     if (!chmodResult.success) {
       throw new Error(`Failed to make worker executable: ${chmodResult.error}`);
     }
@@ -88,32 +96,23 @@ export async function injectWorkerIntoSandbox(
 
     console.log("🚀 Starting worker in background...");
 
-    // Start the worker
-    const startResult = await runCommandInSandbox(sandbox, "bash", ["-c", startCommand]);
+    // Start the worker (fire and forget - don't await the process)
+    const startResult = await runCommandInSandbox(sandbox, "bash", [
+      "-c",
+      startCommand,
+    ]);
+
     if (!startResult.success) {
       throw new Error(`Failed to start worker: ${startResult.error}`);
     }
 
-    // Wait a moment for the worker to start
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    console.log("✅ Worker start command executed successfully");
+    console.log("📝 Worker will initialize in background - use getWorkerStatus() to check status");
 
-    // Check if worker is running
-    const statusCommand = WorkerBundler.generateStatusCommand();
-    const statusResult = await runCommandInSandbox(sandbox, "bash", ["-c", statusCommand]);
-
-    if (statusResult.success && statusResult.output.trim() === "running") {
-      console.log("✅ Worker started successfully and is running");
-      return { success: true };
-    } else {
-      // Try to get worker logs for debugging
-      const logsResult = await runCommandInSandbox(sandbox, "tail", ["-20", "/tmp/worker.log"]);
-      const logs = logsResult.success ? logsResult.output : "No logs available";
-
-      throw new Error(`Worker failed to start properly. Status: ${statusResult.output.trim()}\n\nWorker logs:\n${logs}`);
-    }
-
+    return { success: true };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error occurred";
     console.error("❌ Failed to inject worker into sandbox:", errorMessage);
     return {
       success: false,
@@ -125,49 +124,119 @@ export async function injectWorkerIntoSandbox(
 export async function getWorkerStatus(sandbox: Sandbox): Promise<{
   isRunning: boolean;
   pid?: string;
-  logs?: string;
 }> {
   try {
     // Check if worker is running
     const statusCommand = WorkerBundler.generateStatusCommand();
-    const statusResult = await runCommandInSandbox(sandbox, "bash", ["-c", statusCommand]);
+    const statusResult = await runCommandInSandbox(sandbox, "bash", [
+      "-c",
+      statusCommand,
+    ]);
 
-    const isRunning = statusResult.success && statusResult.output.trim() === "running";
+    const isRunning =
+      statusResult.success && statusResult.output?.trim() === "running";
 
     let pid: string | undefined;
     if (isRunning) {
       // Get PID
-      const pidResult = await runCommandInSandbox(sandbox, "cat", ["/tmp/worker.pid"]);
+      const pidResult = await runCommandInSandbox(sandbox, "cat", [
+        "/tmp/worker.pid",
+      ]);
       if (pidResult.success) {
-        pid = pidResult.output.trim();
+        pid = pidResult.output?.trim();
       }
     }
-
-    // Get recent logs
-    const logsResult = await runCommandInSandbox(sandbox, "tail", ["-50", "/tmp/worker.log"]);
-    const logs = logsResult.success ? logsResult.output : "No logs available";
 
     return {
       isRunning,
       pid,
-      logs,
     };
-
   } catch (error) {
     console.error("❌ Failed to get worker status:", error);
     return {
       isRunning: false,
-      logs: `Error getting status: ${error}`,
     };
   }
 }
 
-export async function stopWorker(sandbox: Sandbox): Promise<{ success: boolean; error?: string }> {
+export async function getWorkerLogs(sandbox: Sandbox): Promise<{
+  success: boolean;
+  logs?: string;
+  error?: string;
+}> {
+  try {
+    const logsCommand = WorkerBundler.generateLogsCommand();
+    const logsResult = await runCommandInSandbox(sandbox, "bash", [
+      "-c",
+      logsCommand,
+    ]);
+
+    return {
+      success: logsResult.success,
+      logs: logsResult.output,
+      error: logsResult.error,
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+    console.error("❌ Failed to get worker logs:", errorMessage);
+    return {
+      success: false,
+      error: errorMessage,
+    };
+  }
+}
+
+export async function debugSandboxFiles(sandbox: Sandbox): Promise<{
+  success: boolean;
+  debug?: string;
+  error?: string;
+}> {
+  try {
+    // Check what files exist in /tmp
+    const debugCommands = [
+      "echo '=== /tmp directory ==='",
+      "ls -la /tmp/",
+      "echo '=== Worker bundle check ==='",
+      "ls -la /tmp/sandbox-worker.js || echo 'Worker bundle not found'",
+      "echo '=== Worker process check ==='",
+      "ps aux | grep sandbox-worker || echo 'No worker processes'",
+      "echo '=== Node version ==='",
+      "node --version",
+      "echo '=== Environment ==='",
+      "env | grep -E '(CONVEX|SANDBOX|R2)' || echo 'No relevant env vars'",
+    ];
+
+    const debugResult = await runCommandInSandbox(sandbox, "bash", [
+      "-c",
+      debugCommands.join(" && ")
+    ]);
+
+    return {
+      success: debugResult.success,
+      debug: debugResult.output,
+      error: debugResult.error,
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+    console.error("❌ Failed to debug sandbox files:", errorMessage);
+    return {
+      success: false,
+      error: errorMessage,
+    };
+  }
+}
+
+export async function stopWorker(
+  sandbox: Sandbox,
+): Promise<{ success: boolean; error?: string }> {
   try {
     console.log("🛑 Stopping worker...");
 
     const stopCommand = WorkerBundler.generateStopCommand();
-    const stopResult = await runCommandInSandbox(sandbox, "bash", ["-c", stopCommand]);
+    const stopResult = await runCommandInSandbox(sandbox, "bash", [
+      "-c",
+      stopCommand,
+    ]);
 
     if (stopResult.success) {
       console.log("✅ Worker stopped successfully");
@@ -175,9 +244,9 @@ export async function stopWorker(sandbox: Sandbox): Promise<{ success: boolean; 
     } else {
       throw new Error(`Failed to stop worker: ${stopResult.error}`);
     }
-
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error occurred";
     console.error("❌ Failed to stop worker:", errorMessage);
     return {
       success: false,
