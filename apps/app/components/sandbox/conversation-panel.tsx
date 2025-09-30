@@ -6,7 +6,6 @@ import {
   ConversationEmptyState,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   PromptInput,
   PromptInputAttachment,
@@ -17,11 +16,26 @@ import {
   PromptInputTextarea,
   PromptInputToolbar,
   PromptInputTools,
+  PromptInputModelSelect,
+  PromptInputModelSelectTrigger,
+  PromptInputModelSelectContent,
+  PromptInputModelSelectItem,
+  PromptInputModelSelectValue,
+  PromptInputActionMenu,
+  PromptInputActionMenuTrigger,
+  PromptInputActionMenuContent,
+  PromptInputActionAddAttachments,
 } from "@/components/ai-elements/prompt-input";
 import { MessageRenderer } from "./message-renderer";
+import { Loader } from "@/components/ai-elements/loader";
+import {
+  Message,
+  MessageContent,
+  MessageAvatar,
+} from "@/components/ai-elements/message";
 import { useQuery, useMutation, usePreloadedQuery } from "convex/react";
 import { api } from "@repo/convex/_generated/api";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { nanoid } from "nanoid";
 import type { Preloaded } from "convex/react";
 import type { Id } from "@repo/convex/_generated/dataModel";
@@ -51,8 +65,10 @@ export function ConversationPanel({
   preloadedMessages,
 }: ConversationPanelProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showThinking, setShowThinking] = useState(false);
+  const [selectedModel, setSelectedModel] = useState("claude-sonnet-4.5");
 
-  const messages = usePreloadedQuery(preloadedMessages) as MessageData[];
+  const messages = usePreloadedQuery(preloadedMessages);
   const session = useQuery(api.sessions.getSessionById, { sessionId });
   const insertUserMessage = useMutation(api.messages.insertUserMessage);
   const [input, setInput] = useState("");
@@ -60,9 +76,18 @@ export function ConversationPanel({
   // Check if we're ready to send messages (session exists)
   const isSessionReady = session !== undefined && session !== null;
 
+  const lastAssistantMessage = messages
+    .filter((message) => message.role === "assistant")
+    .sort((a, b) => b._creationTime - a._creationTime)[0];
+
+  console.log(lastAssistantMessage);
+
+  const isGenerating =
+    lastAssistantMessage?.metadata.isComplete === false || isSubmitting;
+
   const handleSubmit = async (message: PromptInputMessage) => {
     if (message.text && isSessionReady) {
-      setIsSubmitting(true);
+      setShowThinking(true);
       try {
         await insertUserMessage({
           id: nanoid(),
@@ -73,40 +98,64 @@ export function ConversationPanel({
         setInput("");
       } catch (error) {
         console.error("Failed to send message:", error);
-      } finally {
-        setIsSubmitting(false);
+        setShowThinking(false);
       }
     }
   };
 
+  // Hide thinking state once we get a real assistant message
+  useEffect(() => {
+    if (showThinking && lastAssistantMessage) {
+      setShowThinking(false);
+    }
+  }, [showThinking, lastAssistantMessage]);
+
   return (
     <div className="w-96 flex flex-col min-h-0">
-      <ScrollArea className="flex-1 min-h-0 0 bg-card rounded-lg border mb-2">
-        <Conversation className="h-full">
-          <ConversationContent className="px-4">
-            {messages.length > 0 ? (
-              <MessageRenderer messages={messages} />
-            ) : (
-              <ConversationEmptyState
-                title={
-                  isSessionReady ? "No messages yet" : "Initializing session..."
-                }
-                description={
-                  isSessionReady
-                    ? "Start a conversation with your sandbox"
-                    : "Setting up Claude Code session"
-                }
-              />
-            )}
-          </ConversationContent>
-          <ConversationScrollButton />
-        </Conversation>
-      </ScrollArea>
+      <Conversation className="flex-1 min-h-0">
+        <ConversationContent className="pl-2 pr-4">
+          {messages.length > 0 ? (
+            <>
+              <MessageRenderer messages={messages as MessageData[]} />
+              {showThinking && (
+                <Message from="system">
+                  <MessageContent variant="flat">
+                    <div className="inline-flex items-center gap-2">
+                      <MessageAvatar
+                        src="/claude.png"
+                        name="Assistant"
+                        className="size-4 ring-0"
+                      />
+                      <span className="font-medium">Claude</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                      <Loader size={14} />
+                      <span>Thinking...</span>
+                    </div>
+                  </MessageContent>
+                </Message>
+              )}
+            </>
+          ) : (
+            <ConversationEmptyState
+              title={
+                isSessionReady ? "No messages yet" : "Initializing session..."
+              }
+              description={
+                isSessionReady
+                  ? "Start a conversation with your sandbox"
+                  : "Setting up Claude Code session"
+              }
+            />
+          )}
+        </ConversationContent>
+        <ConversationScrollButton />
+      </Conversation>
       <PromptInput
         onSubmit={handleSubmit}
-        className="relative rounded-lg shadow-none bg-card"
+        className="relative shadow-lg bg-card"
       >
-        <PromptInputBody>
+        <PromptInputBody className="border-0">
           <PromptInputAttachments>
             {(attachment) => <PromptInputAttachment data={attachment} />}
           </PromptInputAttachments>
@@ -116,16 +165,40 @@ export function ConversationPanel({
             disabled={!isSessionReady}
             placeholder={
               isSessionReady
-                ? "Type your message..."
+                ? "Ask anything to Claude..."
                 : "Waiting for session to initialize..."
             }
           />
         </PromptInputBody>
         <PromptInputToolbar>
-          <PromptInputTools />
+          <PromptInputTools>
+            <PromptInputActionMenu>
+              <PromptInputActionMenuTrigger />
+              <PromptInputActionMenuContent>
+                <PromptInputActionAddAttachments />
+              </PromptInputActionMenuContent>
+            </PromptInputActionMenu>
+            <PromptInputModelSelect
+              value={selectedModel}
+              onValueChange={setSelectedModel}
+            >
+              <PromptInputModelSelectTrigger className="w-38 text-xs">
+                <PromptInputModelSelectValue />
+              </PromptInputModelSelectTrigger>
+              <PromptInputModelSelectContent>
+                <PromptInputModelSelectItem value="claude-sonnet-4.5">
+                  Claude Sonnet 4.5
+                </PromptInputModelSelectItem>
+                <PromptInputModelSelectItem value="claude-opus-4.1">
+                  Claude Opus 4.1
+                </PromptInputModelSelectItem>
+              </PromptInputModelSelectContent>
+            </PromptInputModelSelect>
+          </PromptInputTools>
           <PromptInputSubmit
-            disabled={isSubmitting || !isSessionReady}
-            status={isSubmitting ? "submitted" : "ready"}
+            disabled={isGenerating || !isSessionReady}
+            status={isGenerating ? "streaming" : "ready"}
+            variant="secondary"
           />
         </PromptInputToolbar>
       </PromptInput>
