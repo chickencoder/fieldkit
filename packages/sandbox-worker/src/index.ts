@@ -273,7 +273,6 @@ async function processStreamingSession() {
           errorMessage,
           processingTime: Date.now(),
           isCompleted: true,
-          workerVersion: "1.0.0",
         },
         sessionId: sessionId,
       });
@@ -300,9 +299,7 @@ async function updateAssistantMessage(
       metadata: {
         processingTime: Date.now(),
         userMessageId,
-        chunkCount: messageChunks.length,
         isCompleted,
-        workerVersion: "1.0.0",
       },
       sessionId: sessionId as any,
     });
