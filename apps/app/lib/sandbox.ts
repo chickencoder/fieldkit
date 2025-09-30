@@ -91,19 +91,20 @@ export async function injectWorkerIntoSandbox(
       throw new Error(`Failed to make worker executable: ${chmodResult.error}`);
     }
 
-    // Install @anthropic-ai/claude-code globally
-    console.log("Installing @anthropic-ai/claude-code globally...");
+    // Install required dependencies globally
+    console.log("Installing @anthropic-ai/claude-agent-sdk and @anthropic-ai/sdk globally...");
     const installResult = await runCommandInSandbox(sandbox, "npm", [
       "install",
       "-g",
-      "@anthropic-ai/claude-code",
+      "@anthropic-ai/claude-agent-sdk",
+      "@anthropic-ai/sdk",
     ]);
     if (!installResult.success) {
       throw new Error(
-        `Failed to install @anthropic-ai/claude-code: ${installResult.error}`,
+        `Failed to install dependencies: ${installResult.error}`,
       );
     }
-    console.log("@anthropic-ai/claude-code installed successfully");
+    console.log("Dependencies installed successfully");
 
     // Generate environment variables and start command
     const envVars = WorkerBundler.generateWorkerEnv(options);

@@ -45,8 +45,6 @@ export class FileWatcher {
     "**/*.temp",
     "**/*.swp",
     "**/*.swo",
-    // But allow our sandbox logs
-    "!/tmp/sandbox-logs/**",
   ];
 
   // Patterns for files that should be synced immediately (critical config files)
@@ -65,7 +63,7 @@ export class FileWatcher {
     "**/postcss.config.*",
     "**/.eslintrc.*",
     "**/.prettierrc.*",
-    "/tmp/sandbox-logs/**/*.log",
+    "/tmp/worker.log",
   ];
 
   constructor(config: WatcherConfig) {
