@@ -7,8 +7,9 @@ import {
   WebPreviewBody,
   WebPreviewNavigationButton,
 } from "@/components/ai-elements/web-preview";
-import { ExternalLinkIcon } from "lucide-react";
+import { ExternalLinkIcon, RefreshCcwIcon } from "lucide-react";
 import { useRef, useState } from "react";
+import { Loader } from "../ai-elements/loader";
 
 interface PreviewPanelProps {
   domain: string;
@@ -25,6 +26,12 @@ export function PreviewPanel({ domain }: PreviewPanelProps) {
         className="h-full rounded-lg overflow-hidden"
       >
         <WebPreviewNavigation>
+          <WebPreviewNavigationButton
+            tooltip="Refresh"
+            onClick={() => iframeRef.current?.contentWindow?.location.reload()}
+          >
+            <RefreshCcwIcon className="w-4 h-4" />
+          </WebPreviewNavigationButton>
           <WebPreviewUrl src={url} onChange={(e) => setUrl(e.target.value)} />
           <WebPreviewNavigationButton
             tooltip="Open in new tab"
