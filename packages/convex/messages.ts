@@ -2,6 +2,9 @@ import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 
 export const getLastUserMessage = query({
+  args: {
+    sessionId: v.id("sessions"),
+  },
   returns: v.union(
     v.object({
       _id: v.id("messages"),
@@ -18,9 +21,10 @@ export const getLastUserMessage = query({
     }),
     v.null(),
   ),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const lastUserMessage = await ctx.db
       .query("messages")
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
       .filter((q) => q.eq(q.field("role"), "user"))
       .order("desc")
       .first();
@@ -29,9 +33,10 @@ export const getLastUserMessage = query({
       return null;
     }
 
-    // Check if there are any assistant messages after this user message
+    // Check if there are any assistant messages after this user message in the same session
     const assistantMessageAfter = await ctx.db
       .query("messages")
+      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
       .filter((q) =>
         q.and(
           q.eq(q.field("role"), "assistant"),
