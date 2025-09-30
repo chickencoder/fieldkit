@@ -2,7 +2,8 @@ import { ConvexClient } from "convex/browser";
 import { api } from "@repo/convex/_generated/api";
 import type { Id } from "@repo/convex/_generated/dataModel";
 import { config } from "dotenv";
-import { query } from "@anthropic-ai/claude-code";
+import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
+import type { TextBlock, ToolUseBlock } from "@anthropic-ai/sdk/resources/messages";
 import { v4 as uuidv4 } from "uuid";
 
 import { FileSync } from "./sync/file-sync";
@@ -10,8 +11,6 @@ import { logger } from "./utils/logger";
 import type {
   MessagePart,
   UserMessage,
-  MessageChunk,
-  QueryOptions,
   StreamingState,
 } from "./types";
 
@@ -156,15 +155,19 @@ async function processStreamingSession() {
     });
 
     // Create the streaming query with the message generator
-    const queryOptions: QueryOptions = {
+    const queryOptions: Options = {
       permissionMode: "acceptEdits",
       maxTurns: 50, // Allow for long conversations
       model: "claude-sonnet-4-5-20250929", // Use a valid Claude model
+      // Use Claude Code system prompt for familiar behavior
+      systemPrompt: { type: 'preset', preset: 'claude_code' },
+      // Don't load filesystem settings for isolated SDK behavior
+      settingSources: [],
+      // Add resume option if we have a session ID
+      ...(resumeSessionId && { resume: resumeSessionId }),
     };
 
-    // Add resume option if we have a session ID
     if (resumeSessionId) {
-      queryOptions.resume = resumeSessionId;
       streamingState.currentSessionId = resumeSessionId;
     }
 
@@ -174,7 +177,7 @@ async function processStreamingSession() {
     });
 
     let currentAssistantMessageId: string | null = null;
-    let currentMessageChunks: MessageChunk[] = [];
+    let currentMessageChunks: Array<TextBlock | ToolUseBlock> = [];
     let currentUserMessageId: string | null = null;
 
     // Process the streaming responses
@@ -218,18 +221,8 @@ async function processStreamingSession() {
         // Process the assistant message content
         if (message.message.content) {
           for (const contentBlock of message.message.content) {
-            if (contentBlock.type === "text") {
-              currentMessageChunks.push({
-                type: "text",
-                text: contentBlock.text,
-              });
-            } else if (contentBlock.type === "tool_use") {
-              currentMessageChunks.push({
-                type: "tool_use",
-                name: contentBlock.name,
-                input: contentBlock.input,
-                id: contentBlock.id,
-              });
+            if (contentBlock.type === "text" || contentBlock.type === "tool_use") {
+              currentMessageChunks.push(contentBlock);
             }
           }
         }
@@ -247,10 +240,17 @@ async function processStreamingSession() {
           message.event.type === "content_block_delta" &&
           message.event.delta.type === "text_delta"
         ) {
-          currentMessageChunks.push({
-            type: "text" as const,
-            text: message.event.delta.text,
-          });
+          // Accumulate text deltas - we'll update with the full content blocks
+          const lastChunk = currentMessageChunks[currentMessageChunks.length - 1];
+          if (lastChunk && lastChunk.type === "text") {
+            lastChunk.text += message.event.delta.text;
+          } else {
+            currentMessageChunks.push({
+              type: "text" as const,
+              text: message.event.delta.text,
+              citations: [],
+            });
+          }
 
           if (currentAssistantMessageId) {
             await updateAssistantMessage(
@@ -264,12 +264,7 @@ async function processStreamingSession() {
           message.event.type === "content_block_start" &&
           message.event.content_block.type === "tool_use"
         ) {
-          currentMessageChunks.push({
-            type: "tool_use" as const,
-            name: message.event.content_block.name,
-            input: message.event.content_block.input,
-            id: message.event.content_block.id,
-          });
+          currentMessageChunks.push(message.event.content_block);
 
           if (currentAssistantMessageId) {
             await updateAssistantMessage(
@@ -375,7 +370,7 @@ async function processStreamingSession() {
 // Helper function to update assistant message in database
 async function updateAssistantMessage(
   assistantMessageId: string,
-  messageChunks: MessageChunk[],
+  messageChunks: Array<TextBlock | ToolUseBlock>,
   userMessageId: string | null,
   isCompleted: boolean,
 ) {
@@ -419,7 +414,7 @@ async function updateAssistantMessage(
 // Helper function to finalize assistant message
 async function finalizeAssistantMessage(
   assistantMessageId: string,
-  messageChunks: MessageChunk[],
+  messageChunks: Array<TextBlock | ToolUseBlock>,
   userMessageId: string | null,
 ) {
   await updateAssistantMessage(
@@ -455,14 +450,14 @@ async function processUserMessage(userMessage: UserMessage | null) {
     return;
   }
 
-  // Add message to queue for the streaming session
-  streamingState.messageQueue.push(userMessage);
-
-  // If there's a resolver waiting, resolve it with the next message
+  // If there's a resolver waiting, resolve it directly without queuing
   if (streamingState.messageQueueResolver) {
     const resolver = streamingState.messageQueueResolver;
     streamingState.messageQueueResolver = null;
     resolver(userMessage);
+  } else {
+    // Otherwise, add message to queue for the streaming session
+    streamingState.messageQueue.push(userMessage);
   }
 
   // Start streaming session if not already active
@@ -535,16 +530,6 @@ async function initializeFileSync(): Promise<void> {
   }
 }
 
-// Initialize file sync
-initializeFileSync().catch((error) => {
-  logger.error("Failed to initialize file sync on startup", error as Error);
-});
-
-// Start the streaming session immediately to get the Claude session ID
-processStreamingSession().catch((error) => {
-  logger.error("Failed to start initial streaming session", error as Error);
-});
-
 // Track processing state and message queue for streaming
 const streamingState: StreamingState = {
   hasInitialized: false,
@@ -555,6 +540,11 @@ const streamingState: StreamingState = {
   currentProcessingMessage: null,
   currentSessionId: null,
 };
+
+// Initialize file sync
+initializeFileSync().catch((error) => {
+  logger.error("Failed to initialize file sync on startup", error as Error);
+});
 
 client.onUpdate(api.messages.getLastUserMessage, {}, (userMessage) => {
   if (userMessage) {
