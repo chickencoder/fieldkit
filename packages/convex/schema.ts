@@ -11,6 +11,11 @@ export default defineSchema({
     ),
     parts: v.array(v.any()),
     metadata: v.optional(v.any()),
-    session_id: v.optional(v.string()),
+    sessionId: v.id("sessions"),
+  }).index("by_session", ["sessionId"]),
+  sessions: defineTable({
+    agentSessionId: v.optional(v.string()),
+    sandboxId: v.string(),
+    createdAt: v.number(),
   }),
 });

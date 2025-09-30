@@ -1,5 +1,6 @@
 import { ConvexClient } from "convex/browser";
 import { api } from "@repo/convex/_generated/api";
+import type { Id } from "@repo/convex/_generated/dataModel";
 import { config } from "dotenv";
 import { query } from "@anthropic-ai/claude-code";
 import { v4 as uuidv4 } from "uuid";
@@ -11,7 +12,7 @@ import type {
   UserMessage,
   MessageChunk,
   QueryOptions,
-  StreamingState
+  StreamingState,
 } from "./types";
 
 config();
@@ -22,16 +23,23 @@ if (!process.env.CONVEX_URL) {
   process.exit(1);
 }
 
+if (!process.env.SESSION_ID) {
+  logger.error("SESSION_ID environment variable is required");
+  process.exit(1);
+}
+
 logger.info("Starting sandbox worker", {
   nodeVersion: process.version,
   platform: process.platform,
   cwd: process.cwd(),
   convexUrl: process.env.CONVEX_URL?.substring(0, 50) + "...",
   sandboxId: process.env.SANDBOX_ID,
+  sessionId: process.env.SESSION_ID,
 });
 
 const client = new ConvexClient(process.env.CONVEX_URL!);
 const sandboxId = process.env.SANDBOX_ID || `sandbox-${Date.now()}`;
+const sessionId = process.env.SESSION_ID! as Id<"sessions">;
 
 // Global FileSync instance
 let fileSync: FileSync | null = null;
@@ -90,7 +98,7 @@ async function* generateUserMessages() {
         content: userContent,
       },
       parent_tool_use_id: null,
-      session_id: sandboxId, // Use sandboxId as session_id
+      session_id: streamingState.currentSessionId || sandboxId,
     };
 
     logger.debug("About to yield user message", {
@@ -113,15 +121,34 @@ async function processStreamingSession() {
   const sessionOp = logger.operation("streaming-session", {});
 
   try {
-    // Check if there's a previous session to resume
+    // Check if there are existing messages in this sandbox session to resume
     let resumeSessionId: string | null = null;
     try {
-      resumeSessionId = await client.query(api.messages.getLastSessionId, {});
-      if (resumeSessionId) {
-        logger.info("Found existing session to resume", { sessionId: resumeSessionId });
+      const currentSession = await client.query(api.sessions.getSessionById, {
+        sessionId: sessionId,
+      });
+
+      if (currentSession?.agentSessionId) {
+        // Only resume if we already have messages in this session
+        const existingMessages = await client.query(
+          api.sessions.getMessagesBySessionId,
+          {
+            sessionId: sessionId,
+          },
+        );
+
+        if (existingMessages.length > 0) {
+          resumeSessionId = currentSession.agentSessionId;
+          logger.info("Found existing session to resume", {
+            sessionId: resumeSessionId,
+            messageCount: existingMessages.length,
+          });
+        }
       }
     } catch (error) {
-      logger.debug("No previous session found or error getting session ID", { error });
+      logger.debug("No previous session found or error getting session ID", {
+        error,
+      });
     }
 
     sessionOp.progress("Starting streaming session with Claude Code", {
@@ -132,7 +159,7 @@ async function processStreamingSession() {
     const queryOptions: QueryOptions = {
       permissionMode: "acceptEdits",
       maxTurns: 50, // Allow for long conversations
-      model: "claude-3-5-sonnet-20241022", // Use a valid Claude model
+      model: "claude-sonnet-4-5-20250929", // Use a valid Claude model
     };
 
     // Add resume option if we have a session ID
@@ -149,7 +176,6 @@ async function processStreamingSession() {
     let currentAssistantMessageId: string | null = null;
     let currentMessageChunks: MessageChunk[] = [];
     let currentUserMessageId: string | null = null;
-    let pendingUserMessage: UserMessage | null = null;
 
     // Process the streaming responses
     for await (const message of claudeQuery) {
@@ -160,8 +186,8 @@ async function processStreamingSession() {
         logger.info("Processing user message in streaming session", {
           messageId: streamingState.currentProcessingMessage?.id,
         });
-        pendingUserMessage = streamingState.currentProcessingMessage;
-        currentUserMessageId = streamingState.currentProcessingMessage?.id || null;
+        currentUserMessageId =
+          streamingState.currentProcessingMessage?.id || null;
         // Reset for next message
         streamingState.currentProcessingMessage = null;
         continue;
@@ -174,7 +200,7 @@ async function processStreamingSession() {
           await finalizeAssistantMessage(
             currentAssistantMessageId,
             currentMessageChunks,
-            currentUserMessageId
+            currentUserMessageId,
           );
         }
 
@@ -213,9 +239,8 @@ async function processStreamingSession() {
           currentAssistantMessageId,
           currentMessageChunks,
           currentUserMessageId,
-          false
+          false,
         );
-
       } else if (message.type === "stream_event") {
         // Handle streaming events
         if (
@@ -223,17 +248,16 @@ async function processStreamingSession() {
           message.event.delta.type === "text_delta"
         ) {
           currentMessageChunks.push({
-            type: "text",
+            type: "text" as const,
             text: message.event.delta.text,
           });
 
-          // Update the message with new content
           if (currentAssistantMessageId) {
             await updateAssistantMessage(
               currentAssistantMessageId,
               currentMessageChunks,
               currentUserMessageId,
-              false
+              false,
             );
           }
         } else if (
@@ -241,7 +265,7 @@ async function processStreamingSession() {
           message.event.content_block.type === "tool_use"
         ) {
           currentMessageChunks.push({
-            type: "tool_use",
+            type: "tool_use" as const,
             name: message.event.content_block.name,
             input: message.event.content_block.input,
             id: message.event.content_block.id,
@@ -252,7 +276,7 @@ async function processStreamingSession() {
               currentAssistantMessageId,
               currentMessageChunks,
               currentUserMessageId,
-              false
+              false,
             );
           }
         }
@@ -265,10 +289,17 @@ async function processStreamingSession() {
 
         // Finalize the current assistant message if there is one
         if (currentAssistantMessageId && currentMessageChunks.length > 0) {
+          // Force a final update to catch any remaining parts
+          await updateAssistantMessage(
+            currentAssistantMessageId,
+            currentMessageChunks,
+            currentUserMessageId,
+            false,
+          );
           await finalizeAssistantMessage(
             currentAssistantMessageId,
             currentMessageChunks,
-            currentUserMessageId
+            currentUserMessageId,
           );
           currentAssistantMessageId = null;
           currentMessageChunks = [];
@@ -281,8 +312,25 @@ async function processStreamingSession() {
         if (message.subtype === "init" && message.session_id) {
           streamingState.currentSessionId = message.session_id;
           logger.info("Captured session ID from system init", {
-            sessionId: streamingState.currentSessionId
+            sessionId: streamingState.currentSessionId,
           });
+
+          // Update the Convex session with the Claude session ID
+          try {
+            await client.mutation(api.sessions.updateSessionWithAgentId, {
+              sessionId: sessionId,
+              agentSessionId: message.session_id,
+            });
+            logger.info("Updated Convex session with Claude session ID", {
+              convexSessionId: sessionId,
+              claudeSessionId: message.session_id,
+            });
+          } catch (error) {
+            logger.error(
+              "Failed to update Convex session with Claude session ID",
+              error as Error,
+            );
+          }
         }
       }
     }
@@ -294,7 +342,10 @@ async function processStreamingSession() {
     // Try to create an error message for the user
     try {
       const errorMessageId = uuidv4();
-      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred in streaming session";
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Unknown error occurred in streaming session";
 
       await client.mutation(api.messages.upsertAssistantMessage, {
         id: errorMessageId,
@@ -311,7 +362,7 @@ async function processStreamingSession() {
           isCompleted: true,
           workerVersion: "1.0.0",
         },
-        session_id: streamingState.currentSessionId || undefined,
+        sessionId: sessionId,
       });
     } catch (insertError) {
       logger.error("Failed to insert error message", insertError as Error);
@@ -326,9 +377,16 @@ async function updateAssistantMessage(
   assistantMessageId: string,
   messageChunks: MessageChunk[],
   userMessageId: string | null,
-  isCompleted: boolean
+  isCompleted: boolean,
 ) {
   try {
+    logger.debug("Updating assistant message", {
+      assistantMessageId: assistantMessageId.substring(0, 8),
+      partsCount: messageChunks.length,
+      sessionId: streamingState.currentSessionId,
+      isCompleted,
+    });
+
     await client.mutation(api.messages.upsertAssistantMessage, {
       id: assistantMessageId,
       parts: [...messageChunks], // Create a copy to avoid reference issues
@@ -339,21 +397,21 @@ async function updateAssistantMessage(
         isCompleted,
         workerVersion: "1.0.0",
       },
-      session_id: streamingState.currentSessionId || undefined,
+      sessionId: sessionId as any,
     });
 
     logger.convex(
       isCompleted ? "Completed assistant message" : "Updated assistant message",
       {
-        assistantMessageId,
+        assistantMessageId: assistantMessageId.substring(0, 8),
         partsCount: messageChunks.length,
         isCompleted,
-      }
+      },
     );
   } catch (error) {
     logger.error("Failed to update assistant message", error as Error, {
       component: "convex",
-      assistantMessageId,
+      assistantMessageId: assistantMessageId.substring(0, 8),
     });
   }
 }
@@ -362,9 +420,14 @@ async function updateAssistantMessage(
 async function finalizeAssistantMessage(
   assistantMessageId: string,
   messageChunks: MessageChunk[],
-  userMessageId: string | null
+  userMessageId: string | null,
 ) {
-  await updateAssistantMessage(assistantMessageId, messageChunks, userMessageId, true);
+  await updateAssistantMessage(
+    assistantMessageId,
+    messageChunks,
+    userMessageId,
+    true,
+  );
   logger.info("Finalized assistant message", { assistantMessageId });
 }
 
@@ -382,9 +445,13 @@ async function processUserMessage(userMessage: UserMessage | null) {
 
   // Validate user message structure
   if (!userMessage.parts || !Array.isArray(userMessage.parts)) {
-    logger.error("Invalid user message: missing or invalid parts array", new Error("Invalid message structure"), {
-      messageId: userMessage.id,
-    });
+    logger.error(
+      "Invalid user message: missing or invalid parts array",
+      new Error("Invalid message structure"),
+      {
+        messageId: userMessage.id,
+      },
+    );
     return;
   }
 
@@ -471,6 +538,11 @@ async function initializeFileSync(): Promise<void> {
 // Initialize file sync
 initializeFileSync().catch((error) => {
   logger.error("Failed to initialize file sync on startup", error as Error);
+});
+
+// Start the streaming session immediately to get the Claude session ID
+processStreamingSession().catch((error) => {
+  logger.error("Failed to start initial streaming session", error as Error);
 });
 
 // Track processing state and message queue for streaming

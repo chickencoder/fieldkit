@@ -75,10 +75,12 @@ export async function injectWorkerIntoSandbox(
       `Uploading worker bundle (${(bundle.size / 1024).toFixed(1)}KB) to sandbox...`,
     );
 
-    await sandbox.writeFiles([{
-      path: "/tmp/sandbox-worker.js",
-      content: Buffer.from(bundle.content),
-    }]);
+    await sandbox.writeFiles([
+      {
+        path: "/tmp/sandbox-worker.js",
+        content: Buffer.from(bundle.content),
+      },
+    ]);
 
     // Make the file executable
     const chmodResult = await runCommandInSandbox(sandbox, "chmod", [
@@ -97,7 +99,9 @@ export async function injectWorkerIntoSandbox(
       "@anthropic-ai/claude-code",
     ]);
     if (!installResult.success) {
-      throw new Error(`Failed to install @anthropic-ai/claude-code: ${installResult.error}`);
+      throw new Error(
+        `Failed to install @anthropic-ai/claude-code: ${installResult.error}`,
+      );
     }
     console.log("@anthropic-ai/claude-code installed successfully");
 
@@ -118,7 +122,9 @@ export async function injectWorkerIntoSandbox(
     }
 
     console.log("Worker start command executed successfully");
-    console.log("Worker will initialize in background - use getWorkerStatus() to check status");
+    console.log(
+      "Worker will initialize in background - use getWorkerStatus() to check status",
+    );
 
     return { success: true };
   } catch (error) {
@@ -167,7 +173,9 @@ export async function getWorkerStatus(sandbox: Sandbox): Promise<WorkerStatus> {
   }
 }
 
-export async function getWorkerLogs(sandbox: Sandbox): Promise<WorkerLogsResult> {
+export async function getWorkerLogs(
+  sandbox: Sandbox,
+): Promise<WorkerLogsResult> {
   try {
     const logsCommand = WorkerBundler.generateLogsCommand();
     const logsResult = await runCommandInSandbox(sandbox, "bash", [
@@ -181,7 +189,8 @@ export async function getWorkerLogs(sandbox: Sandbox): Promise<WorkerLogsResult>
       error: logsResult.error,
     };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error occurred";
     console.error("Failed to get worker logs:", errorMessage);
     return {
       success: false,
@@ -190,7 +199,9 @@ export async function getWorkerLogs(sandbox: Sandbox): Promise<WorkerLogsResult>
   }
 }
 
-export async function debugSandboxFiles(sandbox: Sandbox): Promise<DebugResult> {
+export async function debugSandboxFiles(
+  sandbox: Sandbox,
+): Promise<DebugResult> {
   try {
     // Check what files exist in /tmp
     const debugCommands = [
@@ -225,14 +236,14 @@ export async function debugSandboxFiles(sandbox: Sandbox): Promise<DebugResult> 
       debugCommands.join(" && "),
     ]);
 
-
     return {
       success: debugResult.success,
       debug: debugResult.output,
       error: debugResult.error,
     };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error occurred";
     console.error("Failed to debug sandbox files:", errorMessage);
     return {
       success: false,
@@ -247,7 +258,9 @@ export async function startProxyServer(
   proxyPort: number = 8080,
 ): Promise<ServiceResult> {
   try {
-    console.log(`Starting proxy server: localhost:${proxyPort} → localhost:${localPort}`);
+    console.log(
+      `Starting proxy server: localhost:${proxyPort} → localhost:${localPort}`,
+    );
 
     // Create a simple HTTP proxy script
     const proxyScript = `
@@ -334,10 +347,12 @@ server.listen(${proxyPort}, () => {
 `;
 
     // Write the proxy script to the sandbox
-    await sandbox.writeFiles([{
-      path: "/tmp/proxy-server.js",
-      content: Buffer.from(proxyScript),
-    }]);
+    await sandbox.writeFiles([
+      {
+        path: "/tmp/proxy-server.js",
+        content: Buffer.from(proxyScript),
+      },
+    ]);
 
     // Start the proxy server in the background
     const startCommand =
@@ -352,7 +367,7 @@ server.listen(${proxyPort}, () => {
     }
 
     // Wait a moment and check if the proxy is running
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
 
     const checkResult = await runCommandInSandbox(sandbox, "bash", [
       "-c",
@@ -384,9 +399,7 @@ server.listen(${proxyPort}, () => {
   }
 }
 
-export async function stopWorker(
-  sandbox: Sandbox,
-): Promise<ServiceResult> {
+export async function stopWorker(sandbox: Sandbox): Promise<ServiceResult> {
   try {
     console.log("Stopping worker...");
 

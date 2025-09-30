@@ -9,6 +9,7 @@ export interface CommandResult {
 export interface WorkerOptions {
   sandboxId: string;
   convexUrl: string;
+  sessionId: string;
   r2Config?: R2Config;
 }
 
@@ -50,6 +51,7 @@ export interface WorkerBundle {
 export interface WorkerEnvironment {
   CONVEX_URL: string;
   SANDBOX_ID: string;
+  SESSION_ID: string;
   NODE_ENV: string;
   ANTHROPIC_API_KEY: string;
   R2_ENDPOINT?: string;

@@ -99,6 +99,7 @@ export class WorkerBundler {
   static generateWorkerEnv(options: {
     sandboxId: string;
     convexUrl: string;
+    sessionId: string;
     r2Config?: {
       endpoint: string;
       accessKeyId: string;
@@ -108,6 +109,7 @@ export class WorkerBundler {
   }): WorkerEnvironment {
     console.log("Generating worker environment variables", {
       sandboxId: options.sandboxId,
+      sessionId: options.sessionId,
       convexUrl: options.convexUrl?.substring(0, 50) + "...",
       hasR2Config: !!options.r2Config,
     });
@@ -120,6 +122,7 @@ export class WorkerBundler {
     const env: WorkerEnvironment = {
       CONVEX_URL: options.convexUrl,
       SANDBOX_ID: options.sandboxId,
+      SESSION_ID: options.sessionId,
       NODE_ENV: "production",
       // Add Claude API key for authentication
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || "",
