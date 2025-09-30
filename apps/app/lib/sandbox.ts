@@ -282,18 +282,46 @@ const server = http.createServer((req, res) => {
 
   // Forward HTTP requests
   console.log('Proxying HTTP request:', req.method, req.url);
+
+  // Rewrite headers to trick Next.js into thinking this is localhost
+  const headers = {
+    ...req.headers,
+    host: 'localhost:${localPort}',
+    'x-forwarded-host': 'localhost:${localPort}',
+    'x-forwarded-proto': 'http',
+    'x-forwarded-for': '127.0.0.1',
+    'x-real-ip': '127.0.0.1'
+  };
+
+  // Preserve origin and referer if present, otherwise set to localhost
+  if (!headers.origin) {
+    headers.origin = 'http://localhost:${localPort}';
+  }
+  if (!headers.referer && headers.referrer) {
+    headers.referer = headers.referrer;
+  }
+
+  // Remove problematic headers
+  delete headers['x-forwarded-port'];
+
+  // Use URL parsing to properly handle encoding
+  // req.url is already decoded by Node.js, so we construct the full URL
+  // and let http.request handle the encoding
+  const targetUrl = new URL(req.url, 'http://localhost:${localPort}');
+
   const options = {
-    hostname: 'localhost',
-    port: ${localPort},
-    path: req.url,
+    hostname: targetUrl.hostname,
+    port: targetUrl.port || ${localPort},
+    path: targetUrl.pathname + targetUrl.search,
     method: req.method,
-    headers: {
-      ...req.headers,
-      host: 'localhost:${localPort}'
-    }
+    headers
   };
 
   const proxyReq = http.request(options, (proxyRes) => {
+    console.log(\`Response status for \${req.url}: \${proxyRes.statusCode}\`);
+    if (proxyRes.statusCode === 404) {
+      console.warn(\`404 Not Found: \${req.method} \${req.url}\`);
+    }
     res.writeHead(proxyRes.statusCode, proxyRes.headers);
     proxyRes.pipe(res, { end: true });
   });
@@ -312,19 +340,42 @@ const server = http.createServer((req, res) => {
 // Handle WebSocket upgrade requests
 server.on('upgrade', (req, socket, head) => {
   console.log('WebSocket upgrade request for:', req.url);
+  console.log('WebSocket headers:', JSON.stringify(req.headers, null, 2));
+
+  // Rewrite headers for WebSocket
+  const headers = {
+    ...req.headers,
+    host: 'localhost:${localPort}',
+    'x-forwarded-host': 'localhost:${localPort}',
+    'x-forwarded-proto': 'http',
+    'x-forwarded-for': '127.0.0.1',
+    'x-real-ip': '127.0.0.1'
+  };
+
+  // Fix origin for WebSocket - Next.js validates this
+  if (headers.origin) {
+    headers.origin = 'http://localhost:${localPort}';
+  }
+
+  // Remove problematic headers
+  delete headers['x-forwarded-port'];
 
   // Create connection to the target server
   const targetSocket = net.createConnection(${localPort}, 'localhost');
 
   targetSocket.on('connect', () => {
-    // Forward the upgrade request
+    console.log('Connected to target WebSocket server');
+
+    // Forward the upgrade request with rewritten headers
     const upgradeHeaders = [
       \`\${req.method} \${req.url} HTTP/\${req.httpVersion}\`,
-      ...Object.keys(req.headers).map(key => \`\${key}: \${req.headers[key]}\`)
+      ...Object.keys(headers).map(key => \`\${key}: \${headers[key]}\`)
     ].join('\\r\\n') + '\\r\\n\\r\\n';
 
     targetSocket.write(upgradeHeaders);
-    targetSocket.write(head);
+    if (head && head.length > 0) {
+      targetSocket.write(head);
+    }
 
     // Pipe data bidirectionally
     socket.pipe(targetSocket);
@@ -333,12 +384,20 @@ server.on('upgrade', (req, socket, head) => {
 
   targetSocket.on('error', (err) => {
     console.error('WebSocket proxy error:', err);
-    socket.end();
+    socket.destroy();
   });
 
   socket.on('error', (err) => {
     console.error('WebSocket client error:', err);
-    targetSocket.end();
+    targetSocket.destroy();
+  });
+
+  socket.on('close', () => {
+    targetSocket.destroy();
+  });
+
+  targetSocket.on('close', () => {
+    socket.destroy();
   });
 });
 
