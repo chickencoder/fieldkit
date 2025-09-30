@@ -7,7 +7,6 @@ import ms from "ms";
 import {
   runCommandInSandbox,
   injectWorkerIntoSandbox,
-  startProxyServer,
 } from "@/lib/sandbox";
 import { ConvexClient } from "convex/browser";
 import { api } from "@repo/convex/_generated/api";
@@ -24,7 +23,6 @@ export const startSandboxAction = actionClient
   .inputSchema(inputSchema)
   .action(async ({ parsedInput }) => {
     console.log("Received parsed input:", parsedInput);
-    const proxyPort = 3001;
 
     try {
       console.log("Creating sandbox...");
@@ -34,7 +32,7 @@ export const startSandboxAction = actionClient
           url: parsedInput.githubRepoUrl,
         },
         resources: { vcpus: 4 },
-        ports: [proxyPort],
+        ports: [parsedInput.localPort], // Expose the dev server port directly
         timeout: ms("1h"),
       });
       console.log("Sandbox created:", sandbox.sandboxId);
@@ -95,24 +93,14 @@ export const startSandboxAction = actionClient
         parsedInput.developmentCommand,
       ]);
 
-      console.log("starting proxy server");
-      const proxyResult = await startProxyServer(
-        sandbox,
-        parsedInput.localPort,
-        proxyPort,
-      );
-
-      if (!proxyResult.success) {
-        console.warn(
-          "⚠️ Failed to start proxy server, continuing without it:",
-          proxyResult.error,
-        );
-      }
+      // Get the public domain for the dev server port
+      const publicDomain = sandbox.domain(parsedInput.localPort);
+      console.log("Public domain:", publicDomain);
 
       return {
         sandboxId: sandbox.sandboxId,
         sessionId,
-        domain: sandbox.domain(proxyPort),
+        domain: publicDomain,
       };
     } catch (error) {
       console.error("Sandbox action failed:", error);
