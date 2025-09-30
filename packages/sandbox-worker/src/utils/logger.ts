@@ -25,13 +25,9 @@ class Logger {
     }
 
     // Create logs directory and file
-    const logsDir = "/tmp/sandbox-logs";
+    // Use /tmp/worker.log as expected by WorkerBundler.generateLogsCommand()
     try {
-      if (!existsSync(logsDir)) {
-        mkdirSync(logsDir, { recursive: true });
-      }
-
-      this.logFile = join(logsDir, `${this.sandboxId}.log`);
+      this.logFile = "/tmp/worker.log";
 
       // Initialize log file with startup message
       const startupMessage = this.formatMessage("info", "Logger initialized", {

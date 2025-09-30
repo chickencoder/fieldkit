@@ -9,6 +9,10 @@
       "types": "./_generated/api.d.ts",
       "default": "./_generated/api.js"
     },
+    "./_generated/dataModel": {
+      "types": "./_generated/dataModel.d.ts",
+      "default": "./_generated/dataModel.js"
+    },
     "./types": {
       "types": "./types.ts",
       "default": "./types.ts"
@@ -21,7 +25,8 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "convex": "^1.27.0"
+    "convex": "^1.27.0",
+    "nanoid": "^5.1.6"
   },
   "devDependencies": {
     "typescript": "^5"
