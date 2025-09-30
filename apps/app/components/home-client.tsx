@@ -3,7 +3,13 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
 import {
   Form,
   FormControl,
@@ -53,9 +59,13 @@ export function HomeClient() {
       toast.promise(startSandbox(data), {
         loading: "Starting sandbox session",
         success: (result) => {
-          if (result.data?.sandboxId && result.data?.domain) {
+          if (
+            result.data?.sandboxId &&
+            result.data?.domain &&
+            result.data?.sessionId
+          ) {
             router.push(
-              `/sandbox/${result.data.sandboxId}?domain=${result.data.domain}`,
+              `/sandbox/${result.data.sandboxId}?domain=${result.data.domain}&sessionId=${result.data.sessionId}`,
             );
             return "Successfully created sandbox session";
           } else {
@@ -74,7 +84,10 @@ export function HomeClient() {
     <main className="max-w-xl mx-auto mt-20">
       <Card>
         <CardHeader>
-          <CardTitle>Start a session</CardTitle>
+          <CardTitle className="text-xl">Start a session</CardTitle>
+          <CardDescription>
+            Create a sandbox session to begin vibe coding
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
@@ -142,7 +155,7 @@ export function HomeClient() {
                     <FormLabel>Port</FormLabel>
                     <FormControl>
                       <Input
-                        type="number"
+                        type="text"
                         placeholder="3000"
                         {...field}
                         onChange={(e) =>
@@ -154,13 +167,15 @@ export function HomeClient() {
                   </FormItem>
                 )}
               />
-              <Button
-                type="submit"
-                disabled={isExecuting}
-                loading={isExecuting}
-              >
-                Start session
-              </Button>
+              <div className="pt-3">
+                <Button
+                  type="submit"
+                  disabled={isExecuting}
+                  loading={isExecuting}
+                >
+                  Start session
+                </Button>
+              </div>
             </form>
           </Form>
         </CardContent>

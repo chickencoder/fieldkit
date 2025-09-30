@@ -1,3 +1,4 @@
+// Convex database schema types
 export interface MessagePart {
   text?: string;
   content?: string;
@@ -9,21 +10,7 @@ export interface UserMessage {
   parts: MessagePart[];
 }
 
-export interface MessageChunk {
-  type: "text" | "tool_use";
-  text?: string;
-  name?: string;
-  input?: unknown;
-  id?: string;
-}
-
-export interface QueryOptions {
-  permissionMode: "acceptEdits";
-  maxTurns: number;
-  model: string;
-  resume?: string;
-}
-
+// Application state management
 export interface StreamingState {
   hasInitialized: boolean;
   lastSeenMessageId: string | null;

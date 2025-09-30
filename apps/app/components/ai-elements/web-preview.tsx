@@ -174,7 +174,7 @@ export const WebPreviewBody = ({
     <div className="flex-1">
       <iframe
         className={cn("size-full", className)}
-        // Removed sandbox attribute to allow WebSocket connections for HMR
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation allow-modals allow-downloads allow-top-navigation allow-top-navigation-by-user-activation"
         src={(src ?? url) || undefined}
         title="Preview"
         {...props}

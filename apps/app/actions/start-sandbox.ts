@@ -4,7 +4,12 @@ import { z } from "zod";
 import { actionClient } from "@/lib/safe-action";
 import { Sandbox } from "@vercel/sandbox";
 import ms from "ms";
-import { runCommandInSandbox, injectWorkerIntoSandbox, startProxyServer } from "@/lib/sandbox";
+import {
+  runCommandInSandbox,
+  injectWorkerIntoSandbox,
+} from "@/lib/sandbox";
+import { ConvexClient } from "convex/browser";
+import { api } from "@repo/convex/_generated/api";
 
 const inputSchema = z.object({
   githubRepoUrl: z.string().url(),
@@ -18,7 +23,6 @@ export const startSandboxAction = actionClient
   .inputSchema(inputSchema)
   .action(async ({ parsedInput }) => {
     console.log("Received parsed input:", parsedInput);
-    const proxyPort = 3001;
 
     try {
       console.log("Creating sandbox...");
@@ -28,61 +32,76 @@ export const startSandboxAction = actionClient
           url: parsedInput.githubRepoUrl,
         },
         resources: { vcpus: 4 },
-        ports: [proxyPort],
-        timeout: ms("10m"),
+        ports: [parsedInput.localPort], // Expose the dev server port directly
+        timeout: ms("1h"),
       });
       console.log("Sandbox created:", sandbox.sandboxId);
 
-
-    // Inject and start the sandbox worker
-    console.log("injecting sandbox worker");
-
-    // Get Convex URL (check multiple possible sources)
-    const convexUrl = process.env.CONVEX_URL || process.env.NEXT_PUBLIC_CONVEX_URL;
-
-    if (!convexUrl) {
-      console.warn("⚠️ No CONVEX_URL found, skipping worker injection");
-    } else {
-      const workerResult = await injectWorkerIntoSandbox(sandbox, {
-        sandboxId: sandbox.sandboxId,
-        convexUrl,
-        r2Config: process.env.R2_ENDPOINT ? {
-          endpoint: process.env.R2_ENDPOINT,
-          accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-          bucketName: process.env.R2_BUCKET_NAME!,
-        } : undefined,
-      });
-
-      if (!workerResult.success) {
-        console.warn("⚠️ Failed to inject worker, continuing without it:", workerResult.error);
+      // Create a new session for this sandbox
+      const convexUrl = process.env.CONVEX_URL || process.env.NEXT_PUBLIC_CONVEX_URL;
+      if (!convexUrl) {
+        throw new Error("CONVEX_URL not found");
       }
-    }
 
-    console.log("running install command");
-    const installCommand = await runCommandInSandbox(sandbox, "sh", [
-      "-c",
-      parsedInput.installCommand,
-    ]);
+      const convexClient = new ConvexClient(convexUrl);
+      const sessionId = await convexClient.mutation(api.sessions.createSession, {
+        sandboxId: sandbox.sandboxId,
+      });
+      console.log("Session created:", sessionId);
 
-    if (!installCommand.success) {
-      throw new Error(installCommand.error);
-    }
+      // Inject and start the sandbox worker
+      console.log("injecting sandbox worker");
 
-    console.log("running development command");
-    runCommandInSandbox(sandbox, "sh", ["-c", parsedInput.developmentCommand]);
+      if (!convexUrl) {
+        console.warn("⚠️ No CONVEX_URL found, skipping worker injection");
+      } else {
+        const workerResult = await injectWorkerIntoSandbox(sandbox, {
+          sandboxId: sandbox.sandboxId,
+          convexUrl,
+          sessionId, // Pass the session ID to the worker
+          r2Config: process.env.R2_ENDPOINT
+            ? {
+                endpoint: process.env.R2_ENDPOINT,
+                accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+                secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+                bucketName: process.env.R2_BUCKET_NAME!,
+              }
+            : undefined,
+        });
 
-    console.log("starting proxy server");
-    const proxyResult = await startProxyServer(sandbox, parsedInput.localPort, proxyPort);
+        if (!workerResult.success) {
+          console.warn(
+            "⚠️ Failed to inject worker, continuing without it:",
+            workerResult.error,
+          );
+        }
+      }
 
-    if (!proxyResult.success) {
-      console.warn("⚠️ Failed to start proxy server, continuing without it:", proxyResult.error);
-    }
+      console.log("running install command");
+      const installCommand = await runCommandInSandbox(sandbox, "sh", [
+        "-c",
+        parsedInput.installCommand,
+      ]);
 
-    return {
-      sandboxId: sandbox.sandboxId,
-      domain: sandbox.domain(proxyPort),
-    };
+      if (!installCommand.success) {
+        throw new Error(installCommand.error);
+      }
+
+      console.log("running development command");
+      runCommandInSandbox(sandbox, "sh", [
+        "-c",
+        parsedInput.developmentCommand,
+      ]);
+
+      // Get the public domain for the dev server port
+      const publicDomain = sandbox.domain(parsedInput.localPort);
+      console.log("Public domain:", publicDomain);
+
+      return {
+        sandboxId: sandbox.sandboxId,
+        sessionId,
+        domain: publicDomain,
+      };
     } catch (error) {
       console.error("Sandbox action failed:", error);
       throw error;

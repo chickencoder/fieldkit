@@ -1,5 +1,12 @@
 import { Sandbox } from "@vercel/sandbox";
-import { WorkerBundler } from "./worker-bundle";
+import {
+  getBundle,
+  getWorkerEnv,
+  getStartCommand,
+  STOP_COMMAND,
+  STATUS_COMMAND,
+  LOGS_COMMAND,
+} from "./worker-bundle";
 import type {
   CommandResult,
   WorkerOptions,
@@ -65,22 +72,15 @@ export async function injectWorkerIntoSandbox(
   options: WorkerOptions,
 ): Promise<ServiceResult> {
   try {
-    console.log("Building and injecting worker bundle into sandbox...");
+    const bundle = getBundle();
 
-    // Build the worker bundle
-    const bundle = await WorkerBundler.buildBundle();
+    await sandbox.writeFiles([
+      {
+        path: "/tmp/sandbox-worker.js",
+        content: Buffer.from(bundle.content),
+      },
+    ]);
 
-    // Write the bundle to the sandbox
-    console.log(
-      `Uploading worker bundle (${(bundle.size / 1024).toFixed(1)}KB) to sandbox...`,
-    );
-
-    await sandbox.writeFiles([{
-      path: "/tmp/sandbox-worker.js",
-      content: Buffer.from(bundle.content),
-    }]);
-
-    // Make the file executable
     const chmodResult = await runCommandInSandbox(sandbox, "chmod", [
       "+x",
       "/tmp/sandbox-worker.js",
@@ -89,25 +89,21 @@ export async function injectWorkerIntoSandbox(
       throw new Error(`Failed to make worker executable: ${chmodResult.error}`);
     }
 
-    // Install @anthropic-ai/claude-code globally
-    console.log("Installing @anthropic-ai/claude-code globally...");
     const installResult = await runCommandInSandbox(sandbox, "npm", [
       "install",
       "-g",
-      "@anthropic-ai/claude-code",
+      "@anthropic-ai/claude-agent-sdk",
+      "@anthropic-ai/sdk",
     ]);
     if (!installResult.success) {
-      throw new Error(`Failed to install @anthropic-ai/claude-code: ${installResult.error}`);
+      throw new Error(
+        `Failed to install dependencies: ${installResult.error}`,
+      );
     }
-    console.log("@anthropic-ai/claude-code installed successfully");
 
-    // Generate environment variables and start command
-    const envVars = WorkerBundler.generateWorkerEnv(options);
-    const startCommand = WorkerBundler.generateStartCommand(envVars);
+    const envVars = getWorkerEnv(options);
+    const startCommand = getStartCommand(envVars);
 
-    console.log("Starting worker in background...");
-
-    // Start the worker (fire and forget - don't await the process)
     const startResult = await runCommandInSandbox(sandbox, "bash", [
       "-c",
       startCommand,
@@ -117,14 +113,10 @@ export async function injectWorkerIntoSandbox(
       throw new Error(`Failed to start worker: ${startResult.error}`);
     }
 
-    console.log("Worker start command executed successfully");
-    console.log("Worker will initialize in background - use getWorkerStatus() to check status");
-
     return { success: true };
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error occurred";
-    console.error("Failed to inject worker into sandbox:", errorMessage);
     return {
       success: false,
       error: errorMessage,
@@ -134,11 +126,9 @@ export async function injectWorkerIntoSandbox(
 
 export async function getWorkerStatus(sandbox: Sandbox): Promise<WorkerStatus> {
   try {
-    // Check if worker is running
-    const statusCommand = WorkerBundler.generateStatusCommand();
     const statusResult = await runCommandInSandbox(sandbox, "bash", [
       "-c",
-      statusCommand,
+      STATUS_COMMAND,
     ]);
 
     const isRunning =
@@ -146,7 +136,6 @@ export async function getWorkerStatus(sandbox: Sandbox): Promise<WorkerStatus> {
 
     let pid: string | undefined;
     if (isRunning) {
-      // Get PID
       const pidResult = await runCommandInSandbox(sandbox, "cat", [
         "/tmp/worker.pid",
       ]);
@@ -160,19 +149,19 @@ export async function getWorkerStatus(sandbox: Sandbox): Promise<WorkerStatus> {
       pid,
     };
   } catch (error) {
-    console.error("Failed to get worker status:", error);
     return {
       isRunning: false,
     };
   }
 }
 
-export async function getWorkerLogs(sandbox: Sandbox): Promise<WorkerLogsResult> {
+export async function getWorkerLogs(
+  sandbox: Sandbox,
+): Promise<WorkerLogsResult> {
   try {
-    const logsCommand = WorkerBundler.generateLogsCommand();
     const logsResult = await runCommandInSandbox(sandbox, "bash", [
       "-c",
-      logsCommand,
+      LOGS_COMMAND,
     ]);
 
     return {
@@ -181,8 +170,8 @@ export async function getWorkerLogs(sandbox: Sandbox): Promise<WorkerLogsResult>
       error: logsResult.error,
     };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-    console.error("Failed to get worker logs:", errorMessage);
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error occurred";
     return {
       success: false,
       error: errorMessage,
@@ -190,9 +179,10 @@ export async function getWorkerLogs(sandbox: Sandbox): Promise<WorkerLogsResult>
   }
 }
 
-export async function debugSandboxFiles(sandbox: Sandbox): Promise<DebugResult> {
+export async function debugSandboxFiles(
+  sandbox: Sandbox,
+): Promise<DebugResult> {
   try {
-    // Check what files exist in /tmp
     const debugCommands = [
       "echo '=== /tmp directory ==='",
       "ls -la /tmp/",
@@ -225,15 +215,14 @@ export async function debugSandboxFiles(sandbox: Sandbox): Promise<DebugResult> 
       debugCommands.join(" && "),
     ]);
 
-
     return {
       success: debugResult.success,
       debug: debugResult.output,
       error: debugResult.error,
     };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-    console.error("Failed to debug sandbox files:", errorMessage);
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error occurred";
     return {
       success: false,
       error: errorMessage,
@@ -247,7 +236,9 @@ export async function startProxyServer(
   proxyPort: number = 8080,
 ): Promise<ServiceResult> {
   try {
-    console.log(`Starting proxy server: localhost:${proxyPort} → localhost:${localPort}`);
+    console.log(
+      `Starting proxy server: localhost:${proxyPort} → localhost:${localPort}`,
+    );
 
     // Create a simple HTTP proxy script
     const proxyScript = `
@@ -268,18 +259,46 @@ const server = http.createServer((req, res) => {
 
   // Forward HTTP requests
   console.log('Proxying HTTP request:', req.method, req.url);
+
+  // Rewrite headers to trick Next.js into thinking this is localhost
+  const headers = {
+    ...req.headers,
+    host: 'localhost:${localPort}',
+    'x-forwarded-host': 'localhost:${localPort}',
+    'x-forwarded-proto': 'http',
+    'x-forwarded-for': '127.0.0.1',
+    'x-real-ip': '127.0.0.1'
+  };
+
+  // Preserve origin and referer if present, otherwise set to localhost
+  if (!headers.origin) {
+    headers.origin = 'http://localhost:${localPort}';
+  }
+  if (!headers.referer && headers.referrer) {
+    headers.referer = headers.referrer;
+  }
+
+  // Remove problematic headers
+  delete headers['x-forwarded-port'];
+
+  // Use URL parsing to properly handle encoding
+  // req.url is already decoded by Node.js, so we construct the full URL
+  // and let http.request handle the encoding
+  const targetUrl = new URL(req.url, 'http://localhost:${localPort}');
+
   const options = {
-    hostname: 'localhost',
-    port: ${localPort},
-    path: req.url,
+    hostname: targetUrl.hostname,
+    port: targetUrl.port || ${localPort},
+    path: targetUrl.pathname + targetUrl.search,
     method: req.method,
-    headers: {
-      ...req.headers,
-      host: 'localhost:${localPort}'
-    }
+    headers
   };
 
   const proxyReq = http.request(options, (proxyRes) => {
+    console.log(\`Response status for \${req.url}: \${proxyRes.statusCode}\`);
+    if (proxyRes.statusCode === 404) {
+      console.warn(\`404 Not Found: \${req.method} \${req.url}\`);
+    }
     res.writeHead(proxyRes.statusCode, proxyRes.headers);
     proxyRes.pipe(res, { end: true });
   });
@@ -298,19 +317,42 @@ const server = http.createServer((req, res) => {
 // Handle WebSocket upgrade requests
 server.on('upgrade', (req, socket, head) => {
   console.log('WebSocket upgrade request for:', req.url);
+  console.log('WebSocket headers:', JSON.stringify(req.headers, null, 2));
+
+  // Rewrite headers for WebSocket
+  const headers = {
+    ...req.headers,
+    host: 'localhost:${localPort}',
+    'x-forwarded-host': 'localhost:${localPort}',
+    'x-forwarded-proto': 'http',
+    'x-forwarded-for': '127.0.0.1',
+    'x-real-ip': '127.0.0.1'
+  };
+
+  // Fix origin for WebSocket - Next.js validates this
+  if (headers.origin) {
+    headers.origin = 'http://localhost:${localPort}';
+  }
+
+  // Remove problematic headers
+  delete headers['x-forwarded-port'];
 
   // Create connection to the target server
   const targetSocket = net.createConnection(${localPort}, 'localhost');
 
   targetSocket.on('connect', () => {
-    // Forward the upgrade request
+    console.log('Connected to target WebSocket server');
+
+    // Forward the upgrade request with rewritten headers
     const upgradeHeaders = [
       \`\${req.method} \${req.url} HTTP/\${req.httpVersion}\`,
-      ...Object.keys(req.headers).map(key => \`\${key}: \${req.headers[key]}\`)
+      ...Object.keys(headers).map(key => \`\${key}: \${headers[key]}\`)
     ].join('\\r\\n') + '\\r\\n\\r\\n';
 
     targetSocket.write(upgradeHeaders);
-    targetSocket.write(head);
+    if (head && head.length > 0) {
+      targetSocket.write(head);
+    }
 
     // Pipe data bidirectionally
     socket.pipe(targetSocket);
@@ -319,12 +361,20 @@ server.on('upgrade', (req, socket, head) => {
 
   targetSocket.on('error', (err) => {
     console.error('WebSocket proxy error:', err);
-    socket.end();
+    socket.destroy();
   });
 
   socket.on('error', (err) => {
     console.error('WebSocket client error:', err);
-    targetSocket.end();
+    targetSocket.destroy();
+  });
+
+  socket.on('close', () => {
+    targetSocket.destroy();
+  });
+
+  targetSocket.on('close', () => {
+    socket.destroy();
   });
 });
 
@@ -334,10 +384,12 @@ server.listen(${proxyPort}, () => {
 `;
 
     // Write the proxy script to the sandbox
-    await sandbox.writeFiles([{
-      path: "/tmp/proxy-server.js",
-      content: Buffer.from(proxyScript),
-    }]);
+    await sandbox.writeFiles([
+      {
+        path: "/tmp/proxy-server.js",
+        content: Buffer.from(proxyScript),
+      },
+    ]);
 
     // Start the proxy server in the background
     const startCommand =
@@ -352,7 +404,7 @@ server.listen(${proxyPort}, () => {
     }
 
     // Wait a moment and check if the proxy is running
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
 
     const checkResult = await runCommandInSandbox(sandbox, "bash", [
       "-c",
@@ -384,20 +436,14 @@ server.listen(${proxyPort}, () => {
   }
 }
 
-export async function stopWorker(
-  sandbox: Sandbox,
-): Promise<ServiceResult> {
+export async function stopWorker(sandbox: Sandbox): Promise<ServiceResult> {
   try {
-    console.log("Stopping worker...");
-
-    const stopCommand = WorkerBundler.generateStopCommand();
     const stopResult = await runCommandInSandbox(sandbox, "bash", [
       "-c",
-      stopCommand,
+      STOP_COMMAND,
     ]);
 
     if (stopResult.success) {
-      console.log("Worker stopped successfully");
       return { success: true };
     } else {
       throw new Error(`Failed to stop worker: ${stopResult.error}`);
@@ -405,7 +451,6 @@ export async function stopWorker(
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error occurred";
-    console.error("Failed to stop worker:", errorMessage);
     return {
       success: false,
       error: errorMessage,
