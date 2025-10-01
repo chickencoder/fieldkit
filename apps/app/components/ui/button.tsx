@@ -53,10 +53,20 @@ function Button({
   return (
     <Comp
       data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={cn("relative", buttonVariants({ variant, size, className }))}
+      disabled={loading || props.disabled}
       {...props}
     >
-      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : children}
+      {loading ? (
+        <>
+          <span className="invisible flex items-center gap-2">
+            {children}
+          </span>
+          <Loader2 className="absolute size-4 animate-spin" />
+        </>
+      ) : (
+        children
+      )}
     </Comp>
   );
 }
