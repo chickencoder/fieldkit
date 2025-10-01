@@ -3,9 +3,9 @@ import { Sandbox } from "@vercel/sandbox";
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { sandboxId: string } }
+  { params }: { params: Promise<{ sandboxId: string }> }
 ) {
-  const { sandboxId } = params;
+  const { sandboxId } = await params;
 
   if (!sandboxId) {
     return NextResponse.json(

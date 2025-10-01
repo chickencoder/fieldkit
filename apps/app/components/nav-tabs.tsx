@@ -23,11 +23,19 @@ export function NavTabs({ tabs }: NavTabsProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<Map<string, HTMLAnchorElement>>(new Map());
 
+  // Find the active tab based on pathname (supports nested routes)
+  // Sort by length descending to find the most specific match first
+  const activeTabHref = tabs
+    .filter((tab) => pathname.startsWith(tab.href))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
+
   // Update active tab position when pathname changes
   useEffect(() => {
     const updateActivePosition = () => {
       const container = containerRef.current;
-      const activeTab = tabRefs.current.get(pathname);
+      const activeTab = activeTabHref
+        ? tabRefs.current.get(activeTabHref)
+        : null;
       if (!container || !activeTab) return;
 
       const containerRect = container.getBoundingClientRect();
@@ -42,7 +50,7 @@ export function NavTabs({ tabs }: NavTabsProps) {
     // Use setTimeout to ensure refs are set and layout is complete
     const timer = setTimeout(updateActivePosition, 0);
     return () => clearTimeout(timer);
-  }, [pathname]);
+  }, [pathname, activeTabHref]);
 
   const handleMouseEnter = (
     e: React.MouseEvent<HTMLAnchorElement>,
@@ -66,7 +74,6 @@ export function NavTabs({ tabs }: NavTabsProps) {
   };
 
   const displayPosition = hoveredTab ? tabPosition : activePosition;
-  const shouldShow = hoveredTab || tabs.some((tab) => tab.href === pathname);
 
   return (
     <nav className="border-b">
@@ -75,7 +82,7 @@ export function NavTabs({ tabs }: NavTabsProps) {
         ref={containerRef}
         onMouseLeave={handleMouseLeave}
       >
-        {shouldShow && (
+        {hoveredTab && (
           <motion.div
             className="absolute bg-muted/70 rounded-md pointer-events-none top-0 bottom-2"
             initial={false}
@@ -87,7 +94,7 @@ export function NavTabs({ tabs }: NavTabsProps) {
           />
         )}
         {tabs.map((tab) => {
-          const isActive = pathname === tab.href;
+          const isActive = tab.href === activeTabHref;
           return (
             <Link
               key={tab.href}

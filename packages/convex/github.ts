@@ -138,3 +138,117 @@ export const getGithubRepos = action({
     }
   },
 });
+
+export const getBranches = action({
+  args: {
+    fullName: v.string(),
+  },
+  returns: v.union(
+    v.object({
+      success: v.boolean(),
+      branches: v.array(
+        v.object({
+          name: v.string(),
+          commit: v.object({
+            sha: v.string(),
+            url: v.string(),
+          }),
+          protected: v.boolean(),
+        }),
+      ),
+    }),
+    v.object({
+      success: v.boolean(),
+      error: v.string(),
+    }),
+  ),
+  handler: async (ctx, args) => {
+
+    // Get the current authenticated user
+    const user = await authComponent.getAuthUser(ctx);
+
+    if (!user) {
+      return {
+        success: false,
+        error: "Not authenticated",
+      };
+    }
+
+    // Query the account table to find the GitHub account for this user
+    const account = await ctx.runQuery(
+      components.betterAuth.adapter.findOne,
+      {
+        model: "account",
+        where: [
+          {
+            field: "userId",
+            operator: "eq",
+            value: user.userId || user._id,
+          },
+          {
+            field: "providerId",
+            operator: "eq",
+            value: "github",
+          },
+        ],
+      },
+    );
+
+    if (!account) {
+      return {
+        success: false,
+        error: "GitHub account not linked",
+      };
+    }
+
+    const accessToken = account.accessToken;
+
+    if (!accessToken) {
+      return {
+        success: false,
+        error: "No GitHub access token found. Please re-authenticate.",
+      };
+    }
+
+    // Call GitHub API to get branches
+    try {
+      const response = await fetch(
+        `https://api.github.com/repos/${args.fullName}/branches`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return {
+          success: false,
+          error: `GitHub API error: ${response.status} ${errorText}`,
+        };
+      }
+
+      const branches = await response.json();
+
+      return {
+        success: true,
+        branches: branches.map((branch: any) => ({
+          name: branch.name,
+          commit: {
+            sha: branch.commit.sha,
+            url: branch.commit.url,
+          },
+          protected: branch.protected,
+        })),
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Failed to fetch branches: ${error instanceof Error ? error.message : "Unknown error"}`,
+      };
+    }
+  },
+});

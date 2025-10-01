@@ -18,4 +18,16 @@ export default defineSchema({
     sandboxId: v.string(),
     createdAt: v.number(),
   }),
+  projects: defineTable({
+    name: v.string(),
+    fullName: v.string(),
+    owner: v.string(),
+    repoId: v.number(),
+    description: v.optional(v.string()),
+    isPrivate: v.boolean(),
+    htmlUrl: v.string(),
+    installCommand: v.string(),
+    devCommand: v.string(),
+    port: v.string(),
+  }).index("by_owner", ["owner"]),
 });

@@ -1,12 +1,6 @@
-import { NavTabs } from "@/components/nav-tabs";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
-const tabs = [
-  { name: "Projects", href: "/projects" },
-  { name: "Settings", href: "/settings" },
-];
-
-export default function DashboardLayout({
+export default function ProjectsLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -22,7 +16,6 @@ export default function DashboardLayout({
           <AvatarFallback>JS</AvatarFallback>
         </Avatar>
       </header>
-      <NavTabs tabs={tabs} />
       {children}
     </div>
   );
