@@ -19,6 +19,9 @@ export default function Index() {
   return (
     <main className="flex flex-col items-center justify-center h-screen space-y-8">
       <h1 className="text-7xl font-medium tracking-tighter">oracode</h1>
+      <p className="font-mono text-sm text-muted-foreground">
+        Claude Code in your browser
+      </p>
       <Button onClick={signIn} loading={isPending}>
         Continue with GitHub
       </Button>
