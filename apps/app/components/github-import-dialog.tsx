@@ -88,6 +88,17 @@ export function GitHubImportDialog() {
     },
   });
 
+  // Get unique owners from repos
+  const owners = Array.from(
+    new Set(repos.map((repo) => repo.owner.login)),
+  ).sort();
+
+  // Filter repos by selected owner
+  const selectedOwner = form.watch("owner");
+  const filteredRepos = selectedOwner
+    ? repos.filter((repo) => repo.owner.login === selectedOwner)
+    : [];
+
   // Fetch repos when dialog opens
   // Always refetch if there was a permissions error (user might have just granted access)
   useEffect(() => {
@@ -100,6 +111,26 @@ export function GitHubImportDialog() {
       }
     }
   }, [open]);
+
+  // Set default owner when repos load
+  useEffect(() => {
+    if (repos.length > 0 && !selectedOwner) {
+      const firstOwner = owners[0];
+      if (firstOwner) {
+        form.setValue("owner", firstOwner);
+      }
+    }
+  }, [repos, owners, selectedOwner]);
+
+  // Set default repo when owner is selected
+  useEffect(() => {
+    if (selectedOwner && filteredRepos.length > 0 && !form.watch("repo")) {
+      const firstRepo = filteredRepos[0];
+      if (firstRepo) {
+        form.setValue("repo", firstRepo.full_name);
+      }
+    }
+  }, [selectedOwner, filteredRepos]);
 
   // Retry fetching repos
   const handleRetry = async () => {
@@ -128,17 +159,6 @@ export function GitHubImportDialog() {
       setLoading(false);
     }
   };
-
-  // Get unique owners from repos
-  const owners = Array.from(
-    new Set(repos.map((repo) => repo.owner.login)),
-  ).sort();
-
-  // Filter repos by selected owner
-  const selectedOwner = form.watch("owner");
-  const filteredRepos = selectedOwner
-    ? repos.filter((repo) => repo.owner.login === selectedOwner)
-    : [];
 
   const onSubmit = async (data: ProjectImportForm) => {
     const selectedRepoData = repos.find(
@@ -241,7 +261,14 @@ export function GitHubImportDialog() {
                                 aria-expanded={ownerOpen}
                                 className="w-full justify-between font-normal"
                               >
-                                <span className="truncate text-left">
+                                <span className="truncate text-left flex items-center gap-2">
+                                  {field.value && (
+                                    <img
+                                      src={`https://github.com/${field.value}.png`}
+                                      alt={field.value}
+                                      className="h-4 w-4 rounded-full"
+                                    />
+                                  )}
                                   {field.value || "Select owner..."}
                                 </span>
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -274,6 +301,11 @@ export function GitHubImportDialog() {
                                               ? "opacity-100"
                                               : "opacity-0",
                                           )}
+                                        />
+                                        <img
+                                          src={`https://github.com/${owner}.png`}
+                                          alt={owner}
+                                          className="mr-2 h-4 w-4 rounded-full"
                                         />
                                         {owner}
                                       </CommandItem>
