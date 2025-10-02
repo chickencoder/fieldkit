@@ -1,16 +1,18 @@
 "use client";
 
-import { useParams } from "next/navigation";
-import { useQuery } from "convex/react";
+import { Preloaded, usePreloadedQuery } from "convex/react";
 import { api } from "@repo/convex/_generated/api";
-import { Id } from "@repo/convex/_generated/dataModel";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
-export default function GeneralSettingsPage() {
-  const params = useParams();
-  const projectId = params.projectId as Id<"projects">;
-  const project = useQuery(api.projects.getProjectById, { projectId });
+type GeneralSettingsClientProps = {
+  preloadedProject: Preloaded<typeof api.projects.getProjectById>;
+};
+
+export function GeneralSettingsClient({
+  preloadedProject,
+}: GeneralSettingsClientProps) {
+  const project = usePreloadedQuery(preloadedProject);
 
   if (!project) return null;
 

@@ -1,19 +1,23 @@
 "use client";
 
-import { useParams, usePathname } from "next/navigation";
-import { useQuery } from "convex/react";
-import { api } from "@repo/convex/_generated/api";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Id } from "@repo/convex/_generated/dataModel";
-import { ProjectHeader } from "@/components/project-header";
-import { Sidebar, SidebarContent, SidebarProvider } from "@/components/ui/sidebar";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarProvider,
+} from "@/components/ui/sidebar";
 import { motion } from "framer-motion";
 import { useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { Settings, Users, BarChart3, CreditCard } from "lucide-react";
+import { DashboardNavigation } from "@/components/dashboard-navigation";
 
 const settingsLinks = [
-  { href: "/general", label: "General" },
-  { href: "/environment", label: "Environment Variables" },
+  { href: "/general", label: "General", icon: Settings },
+  { href: "/users", label: "Users", icon: Users },
+  { href: "/usage", label: "Usage", icon: BarChart3 },
+  { href: "/billing", label: "Billing", icon: CreditCard },
 ];
 
 export default function SettingsLayout({
@@ -21,19 +25,16 @@ export default function SettingsLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const params = useParams();
   const pathname = usePathname();
-  const projectId = params.projectId as Id<"projects">;
-  const project = useQuery(api.projects.getProjectById, { projectId });
   const [hoveredLink, setHoveredLink] = useState<string | null>(null);
   const [linkPosition, setLinkPosition] = useState({ top: 0, height: 0 });
   const [activePosition, setActivePosition] = useState({ top: 0, height: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const linkRefs = useRef<Map<string, HTMLAnchorElement>>(new Map());
 
-  const activePath = `/projects/${projectId}/settings${settingsLinks.find((link) =>
-    pathname === `/projects/${projectId}/settings${link.href}`
-  )?.href}`;
+  const activePath = `/settings${
+    settingsLinks.find((link) => pathname === `/settings${link.href}`)?.href
+  }`;
 
   // Update active link position when pathname changes
   useEffect(() => {
@@ -57,7 +58,7 @@ export default function SettingsLayout({
 
   const handleMouseEnter = (
     e: React.MouseEvent<HTMLAnchorElement>,
-    href: string
+    href: string,
   ) => {
     const container = containerRef.current;
     if (!container) return;
@@ -78,23 +79,14 @@ export default function SettingsLayout({
 
   const displayPosition = hoveredLink ? linkPosition : activePosition;
 
-  if (project === undefined) {
-    return <div>Loading...</div>;
-  }
-
-  if (!project) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <p className="text-muted-foreground">Project not found</p>
-      </div>
-    );
-  }
-
   return (
     <>
-      <ProjectHeader project={project} />
+      <DashboardNavigation />
       <SidebarProvider className="items-start">
-        <Sidebar collapsible="none" className="hidden md:flex bg-background">
+        <Sidebar
+          collapsible="none"
+          className="hidden md:flex p-0 bg-transparent"
+        >
           <SidebarContent>
             <div
               className="relative px-2 py-2"
@@ -112,8 +104,9 @@ export default function SettingsLayout({
               />
               <nav className="flex flex-col gap-1">
                 {settingsLinks.map((link) => {
-                  const fullPath = `/projects/${projectId}/settings${link.href}`;
+                  const fullPath = `/settings${link.href}`;
                   const isActive = pathname === fullPath;
+                  const Icon = link.icon;
 
                   return (
                     <Link
@@ -125,12 +118,13 @@ export default function SettingsLayout({
                       }}
                       onMouseEnter={(e) => handleMouseEnter(e, fullPath)}
                       className={cn(
-                        "px-3 py-2 text-sm font-medium rounded-md transition-colors relative z-10",
+                        "px-3 py-2 text-sm font-medium rounded-md transition-colors relative z-10 flex items-center gap-2",
                         isActive
                           ? "text-foreground"
-                          : "text-muted-foreground hover:text-foreground"
+                          : "text-muted-foreground hover:text-foreground",
                       )}
                     >
+                      <Icon className="h-4 w-4" />
                       {link.label}
                     </Link>
                   );
@@ -139,7 +133,7 @@ export default function SettingsLayout({
             </div>
           </SidebarContent>
         </Sidebar>
-        <main className="flex flex-1 flex-col overflow-hidden px-6">
+        <main className="flex flex-1 flex-col overflow-hidden px-8">
           {children}
         </main>
       </SidebarProvider>

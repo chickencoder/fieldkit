@@ -66,7 +66,7 @@ const projectImportSchema = z.object({
 
 type ProjectImportForm = z.infer<typeof projectImportSchema>;
 
-export default function GitHubImportDialog() {
+export function GitHubImportDialog() {
   const [open, setOpen] = useState(false);
   const [repos, setRepos] = useState<GitHubRepo[]>([]);
   const [loading, setLoading] = useState(false);

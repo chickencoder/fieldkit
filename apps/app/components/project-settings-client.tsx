@@ -10,13 +10,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ProjectHeader } from "@/components/project-header";
 
 type ProjectSettingsClientProps = {
   preloadedProject: Preloaded<typeof api.projects.getProjectById>;
 };
 
-export default function ProjectSettingsClient({
+export function ProjectSettingsClient({
   preloadedProject,
 }: ProjectSettingsClientProps) {
   const project = usePreloadedQuery(preloadedProject);
@@ -30,10 +29,7 @@ export default function ProjectSettingsClient({
   }
 
   return (
-    <>
-      <ProjectHeader project={project} />
-
-      <div className="pt-2">
+    <div className="pt-2">
         <Card>
           <CardHeader>
             <CardTitle>Project Settings</CardTitle>
@@ -62,7 +58,6 @@ export default function ProjectSettingsClient({
             </div>
           </CardContent>
         </Card>
-      </div>
-    </>
+    </div>
   );
 }

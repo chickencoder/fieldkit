@@ -9,6 +9,7 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as branches from "../branches.js";
 import type * as github from "../github.js";
 import type * as http from "../http.js";
 import type * as messages from "../messages.js";
@@ -32,6 +33,7 @@ import type {
  */
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  branches: typeof branches;
   github: typeof github;
   http: typeof http;
   messages: typeof messages;

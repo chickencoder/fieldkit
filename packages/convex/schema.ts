@@ -30,4 +30,12 @@ export default defineSchema({
     devCommand: v.string(),
     port: v.string(),
   }).index("by_owner", ["owner"]),
+  branches: defineTable({
+    projectId: v.id("projects"),
+    name: v.string(),
+    commitSha: v.string(),
+    commitUrl: v.string(),
+    protected: v.boolean(),
+    orgId: v.optional(v.string()),
+  }).index("by_project", ["projectId"]),
 });
