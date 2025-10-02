@@ -30,10 +30,7 @@ export const createAuth = (
         scope: ["user:email", "repo"],
       },
     },
-    plugins: [
-      // The Convex plugin is required for Convex compatibility
-      convex(),
-    ],
+    plugins: [convex()],
   });
 };
 

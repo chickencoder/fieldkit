@@ -4,6 +4,11 @@ import { useMemo } from "react";
 import { Preloaded, usePreloadedQuery } from "convex/react";
 import { api } from "@repo/convex/_generated/api";
 import { GitBranch } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { Id } from "@repo/convex/_generated/dataModel";
+import { useAction } from "next-safe-action/hooks";
+import { launchSandboxAction } from "@/actions/launch-sandbox";
+import { toast } from "sonner";
 
 type BranchesListClientProps = {
   preloadedBranches: Preloaded<typeof api.branches.getBranchesByProject>;
@@ -15,15 +20,41 @@ export function BranchesListClient({
   searchQuery,
 }: BranchesListClientProps) {
   const branches = usePreloadedQuery(preloadedBranches);
+  const params = useParams();
+  const router = useRouter();
+  const projectId = params.projectId as Id<"projects">;
+
+  const { execute: executeLaunchSandbox, isExecuting } =
+    useAction(launchSandboxAction);
 
   const filteredBranches = useMemo(() => {
     if (!searchQuery) return branches;
 
     const query = searchQuery.toLowerCase();
     return branches.filter((branch) =>
-      branch.name.toLowerCase().includes(query)
+      branch.name.toLowerCase().includes(query),
     );
   }, [branches, searchQuery]);
+
+  const handleBranchClick = async (branchId: Id<"branches">) => {
+    const result = await executeLaunchSandbox({
+      projectId,
+      branchId,
+    });
+
+    console.log("Launch sandbox result:", result);
+
+    if (result?.data) {
+      router.push(`/sandbox/${result.data.sessionId}`);
+      toast.success("Sandbox launched successfully!");
+    } else if (result?.serverError) {
+      toast.error(`Server error: ${result.serverError}`);
+    } else if (result?.validationErrors) {
+      toast.error("Validation error");
+    } else {
+      toast.error("Failed to launch sandbox");
+    }
+  };
 
   if (filteredBranches.length === 0) {
     return (
@@ -43,9 +74,11 @@ export function BranchesListClient({
   return (
     <div className="space-y-2">
       {filteredBranches.map((branch) => (
-        <div
+        <button
           key={branch._id}
-          className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
+          onClick={() => handleBranchClick(branch._id)}
+          disabled={isExecuting}
+          className="w-full border rounded-lg p-4 hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-left"
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -63,7 +96,7 @@ export function BranchesListClient({
               </span>
             )}
           </div>
-        </div>
+        </button>
       ))}
     </div>
   );

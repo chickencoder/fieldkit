@@ -3,7 +3,7 @@ import { query, mutation } from "./_generated/server";
 
 export const createSession = mutation({
   args: {
-    sandboxId: v.string(),
+    sandboxId: v.id("sandboxes"),
   },
   returns: v.id("sessions"),
   handler: async (ctx, args) => {
@@ -21,10 +21,13 @@ export const updateSessionWithAgentId = mutation({
     sessionId: v.id("sessions"),
     agentSessionId: v.string(),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     await ctx.db.patch(args.sessionId, {
       agentSessionId: args.agentSessionId,
     });
+
+    return null;
   },
 });
 
@@ -37,13 +40,38 @@ export const getSessionById = query({
       _id: v.id("sessions"),
       _creationTime: v.number(),
       agentSessionId: v.optional(v.string()),
-      sandboxId: v.string(),
+      sandboxId: v.id("sandboxes"),
       createdAt: v.number(),
     }),
-    v.null()
+    v.null(),
   ),
   handler: async (ctx, args) => {
     return await ctx.db.get(args.sessionId);
+  },
+});
+
+export const getLatestSessionBySandbox = query({
+  args: {
+    sandboxId: v.id("sandboxes"),
+  },
+  returns: v.union(
+    v.object({
+      _id: v.id("sessions"),
+      _creationTime: v.number(),
+      agentSessionId: v.optional(v.string()),
+      sandboxId: v.id("sandboxes"),
+      createdAt: v.number(),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx, args) => {
+    const session = await ctx.db
+      .query("sessions")
+      .withIndex("by_sandbox", (q) => q.eq("sandboxId", args.sandboxId))
+      .order("desc")
+      .first();
+
+    return session;
   },
 });
 
@@ -64,7 +92,7 @@ export const getMessagesBySessionId = query({
       parts: v.array(v.any()),
       metadata: v.optional(v.any()),
       sessionId: v.id("sessions"),
-    })
+    }),
   ),
   handler: async (ctx, args) => {
     return await ctx.db

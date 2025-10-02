@@ -13,11 +13,6 @@ export default defineSchema({
     metadata: v.optional(v.any()),
     sessionId: v.id("sessions"),
   }).index("by_session", ["sessionId"]),
-  sessions: defineTable({
-    agentSessionId: v.optional(v.string()),
-    sandboxId: v.string(),
-    createdAt: v.number(),
-  }),
   projects: defineTable({
     name: v.string(),
     fullName: v.string(),
@@ -38,4 +33,17 @@ export default defineSchema({
     protected: v.boolean(),
     orgId: v.optional(v.string()),
   }).index("by_project", ["projectId"]),
+  sandboxes: defineTable({
+    projectId: v.id("projects"),
+    branchId: v.id("branches"),
+    sandboxId: v.string(),
+    domain: v.string(),
+    status: v.union(v.literal("active"), v.literal("stopped")),
+    createdAt: v.number(),
+  }).index("by_project_and_branch", ["projectId", "branchId"]),
+  sessions: defineTable({
+    agentSessionId: v.optional(v.string()),
+    sandboxId: v.id("sandboxes"),
+    createdAt: v.number(),
+  }).index("by_sandbox", ["sandboxId"]),
 });
