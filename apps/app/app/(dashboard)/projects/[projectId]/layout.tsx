@@ -2,6 +2,7 @@ import { preloadQuery } from "convex/nextjs";
 import { api } from "@repo/convex/_generated/api";
 import { Id } from "@repo/convex/_generated/dataModel";
 import { ProjectHeaderClient } from "@/components/project-header-client";
+import { getToken } from "@/lib/auth-server";
 
 type LayoutProps = {
   params: Promise<{ projectId: Id<"projects"> }>;
@@ -10,9 +11,13 @@ type LayoutProps = {
 
 export default async function ProjectLayout({ params, children }: LayoutProps) {
   const { projectId } = await params;
-  const preloadedProject = await preloadQuery(api.projects.getProjectById, {
-    projectId,
-  });
+  const preloadedProject = await preloadQuery(
+    api.projects.getProjectById,
+    {
+      projectId,
+    },
+    { token: await getToken() },
+  );
 
   return (
     <>

@@ -20,6 +20,10 @@ export const getActiveSandbox = query({
     v.null()
   ),
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      throw new Error("Unauthorized");
+    }
     const sandbox = await ctx.db
       .query("sandboxes")
       .withIndex("by_project_and_branch", (q) =>
@@ -41,6 +45,10 @@ export const createSandbox = mutation({
   },
   returns: v.id("sandboxes"),
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      throw new Error("Unauthorized");
+    }
     const sandboxRecordId = await ctx.db.insert("sandboxes", {
       projectId: args.projectId,
       branchId: args.branchId,
@@ -61,6 +69,10 @@ export const updateSandboxStatus = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      throw new Error("Unauthorized");
+    }
     await ctx.db.patch(args.sandboxRecordId, {
       status: args.status,
     });

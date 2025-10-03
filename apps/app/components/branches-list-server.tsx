@@ -12,9 +12,12 @@ export async function BranchesListServer({
   projectId,
   searchQuery,
 }: BranchesListServerProps) {
-  const preloadedBranches = await preloadQuery(api.branches.getBranchesByProject, {
-    projectId,
-  });
+  const preloadedBranches = await preloadQuery(
+    api.branches.getBranchesByProject,
+    {
+      projectId,
+    },
+  );
 
   return (
     <BranchesListClient

@@ -7,6 +7,10 @@ export const createSession = mutation({
   },
   returns: v.id("sessions"),
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      throw new Error("Unauthorized");
+    }
     const sessionId = await ctx.db.insert("sessions", {
       sandboxId: args.sandboxId,
       createdAt: Date.now(),
@@ -23,6 +27,10 @@ export const updateSessionWithAgentId = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      throw new Error("Unauthorized");
+    }
     await ctx.db.patch(args.sessionId, {
       agentSessionId: args.agentSessionId,
     });
@@ -46,6 +54,10 @@ export const getSessionById = query({
     v.null(),
   ),
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      throw new Error("Unauthorized");
+    }
     return await ctx.db.get(args.sessionId);
   },
 });
@@ -65,6 +77,10 @@ export const getLatestSessionBySandbox = query({
     v.null(),
   ),
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      throw new Error("Unauthorized");
+    }
     const session = await ctx.db
       .query("sessions")
       .withIndex("by_sandbox", (q) => q.eq("sandboxId", args.sandboxId))
@@ -95,6 +111,10 @@ export const getMessagesBySessionId = query({
     }),
   ),
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      throw new Error("Unauthorized");
+    }
     return await ctx.db
       .query("messages")
       .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))

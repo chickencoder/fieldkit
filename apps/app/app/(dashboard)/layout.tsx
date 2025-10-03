@@ -6,7 +6,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="max-w-5xl mx-auto p-4 space-y-8">
+    <div className="max-w-7xl mx-auto p-4 space-y-8">
       <header className="flex items-center justify-between">
         <div>
           <span className="text-2xl font-medium tracking-tight">oracode</span>

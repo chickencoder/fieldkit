@@ -16,6 +16,10 @@ export const getBranchesByProject = query({
     }),
   ),
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      throw new Error("Unauthorized");
+    }
     const branches = await ctx.db
       .query("branches")
       .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
@@ -35,6 +39,10 @@ export const upsertBranch = mutation({
   },
   returns: v.id("branches"),
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      throw new Error("Unauthorized");
+    }
     // Check if branch already exists
     const existingBranch = await ctx.db
       .query("branches")
@@ -81,6 +89,10 @@ export const syncBranchesFromGitHub = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      throw new Error("Unauthorized");
+    }
     // Get existing branches for this project
     const existingBranches = await ctx.db
       .query("branches")

@@ -21,6 +21,10 @@ export const getProjectById = query({
     v.null(),
   ),
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      throw new Error("Unauthorized");
+    }
     const project = await ctx.db.get(args.projectId);
     return project;
   },
@@ -45,6 +49,10 @@ export const getUserProjects = query({
     }),
   ),
   handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      throw new Error("Unauthorized");
+    }
     // TODO: Filter by userId once auth is fully integrated
     const projects = await ctx.db.query("projects").collect();
     return projects;
@@ -66,6 +74,10 @@ export const createProject = mutation({
   },
   returns: v.id("projects"),
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      throw new Error("Unauthorized");
+    }
     const projectId = await ctx.db.insert("projects", {
       name: args.name,
       fullName: args.fullName,

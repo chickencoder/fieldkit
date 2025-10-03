@@ -31,11 +31,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} font-sans dark antialiased`}
       >
-        <ConvexClientProvider>
-          <NuqsAdapter>{children}</NuqsAdapter>
-        </ConvexClientProvider>
+        <NuqsAdapter>
+          <ConvexClientProvider>{children}</ConvexClientProvider>
+        </NuqsAdapter>
         <Toaster />
       </body>
     </html>

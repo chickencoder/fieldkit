@@ -12,7 +12,7 @@ export default function Index() {
       const data = await authClient.signIn.social({
         provider: "github",
       });
-      console.log(data);
+      console.log({ data });
     });
   };
 

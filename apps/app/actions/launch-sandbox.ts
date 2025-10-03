@@ -99,7 +99,7 @@ export const launchSandboxAction = actionClient
         source: {
           type: "git",
           url: project.htmlUrl,
-          ref: branch.name,
+          revision: branch.name,
         },
         resources: { vcpus: 4 },
         ports: [parseInt(project.port)],

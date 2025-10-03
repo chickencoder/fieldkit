@@ -22,6 +22,10 @@ export const getLastUserMessage = query({
     v.null(),
   ),
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      throw new Error("Unauthorized");
+    }
     const lastUserMessage = await ctx.db
       .query("messages")
       .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
@@ -58,6 +62,10 @@ export const insertAssistantMessage = mutation({
     sessionId: v.id("sessions"),
   },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      throw new Error("Unauthorized");
+    }
     return await ctx.db.insert("messages", {
       id: args.id,
       role: "assistant",
@@ -76,6 +84,10 @@ export const upsertAssistantMessage = mutation({
     sessionId: v.id("sessions"),
   },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      throw new Error("Unauthorized");
+    }
     // Try to find existing message
     const existingMessage = await ctx.db
       .query("messages")
@@ -110,6 +122,10 @@ export const insertUserMessage = mutation({
     sessionId: v.id("sessions"),
   },
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      throw new Error("Unauthorized");
+    }
     return await ctx.db.insert("messages", {
       id: args.id,
       role: "user",
@@ -138,6 +154,10 @@ export const getAllMessages = query({
     })
   ),
   handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      throw new Error("Unauthorized");
+    }
     return await ctx.db
       .query("messages")
       .order("asc")
@@ -149,6 +169,10 @@ export const getAllMessages = query({
 export const getCurrentSessionId = query({
   returns: v.union(v.id("sessions"), v.null()),
   handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      throw new Error("Unauthorized");
+    }
     // Get the most recent assistant message, which should have the current sessionId
     const lastAssistantMessage = await ctx.db
       .query("messages")
@@ -180,6 +204,10 @@ export const getMessagesBySessionId = query({
     })
   ),
   handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (identity === null) {
+      throw new Error("Unauthorized");
+    }
     return await ctx.db
       .query("messages")
       .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
